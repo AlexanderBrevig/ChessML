@@ -55,6 +55,28 @@ dune build --profile=release
 dune exec bin/create_book.exe
 ```
 
+### Opening Book Setup
+
+ChessML will automatically look for the opening book in the following locations (in order):
+
+1. Current directory: `./book.bin`
+2. XDG data directory: `$XDG_DATA_HOME/chessml/book.bin` (typically `~/.local/share/chessml/book.bin`)
+3. User directory: `~/.chessml/book.bin`
+4. System-wide: `/usr/local/share/chessml/book.bin`
+5. System-wide: `/usr/share/chessml/book.bin`
+
+Cutechess will not find the book, so please install it.
+To install the opening book for your user:
+
+```bash
+# Create the directory
+mkdir -p ~/.local/share/chessml
+
+# Copy the book file
+cp book.bin ~/.local/share/chessml/
+```
+
+
 > **⚠️ Performance Note**: For benchmarks, testing, or actual gameplay, **always use `--profile=release`**!
 > Release mode enables critical optimizations (inlining, flambda, bounds check elimination) that significantly improve search speed.
 >
@@ -241,6 +263,7 @@ ChessML is licensed under the [MIT License](LICENSE) - see the [LICENSE](https:/
 
 ## 📝 TODO
 
+- Avoid repetition draw when clearly ahead
 - Improve parallel search performance
 - Tune evaluation parameters
 - Add endgame tablebase support
