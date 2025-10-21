@@ -1,6 +1,7 @@
 # ChessML
 
-> [!NOTE] > **Personal Learning Project**  
+> [!NOTE]
+> **Personal Learning Project**  
 > This is a personal hobby project created for learning chess programming and OCaml.
 > It has no specific roadmap, goals, or direction—just exploration and experimentation.
 > Code quality and features evolve organically as I learn. Contributions and suggestions
