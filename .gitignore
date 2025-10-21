@@ -1,0 +1,45 @@
+# Build artifacts
+_build/
+*.install
+.merlin
+*.opam
+!chessml.opam
+
+# Generated files
+book.bin
+*.exe
+*.o
+*.a
+*.so
+*.dylib
+
+# Profiling and performance data
+perf.data
+perf.data.old
+gmon.out
+*.prof
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test outputs
+_coverage/
+*.coverage
+
+# Temporary/working files
+BUILDING.md
+DEVELOPMENT_*.md
+IMPROVEMENT_*.md
+PERFORMANCE_*.md
+results_skill*
+*.tmp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

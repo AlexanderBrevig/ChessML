@@ -1,0 +1,11 @@
+;; ============================================================================
+;; Protocol Tests - UCI and XBoard protocol implementations
+;; ============================================================================
+
+(test
+ (name test_uci)
+ (libraries chessml))
+
+(test
+ (name test_xboard)
+ (libraries chessml))

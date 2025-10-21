@@ -1,0 +1,8 @@
+;; ============================================================================
+;; Integration Tests - End-to-end testing
+;; ============================================================================
+
+(test
+ (name test_integration)
+ (modules test_integration)
+ (libraries chessml alcotest))

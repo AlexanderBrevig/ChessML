@@ -1,0 +1,24 @@
+;; ============================================================================
+;; ChessML Binaries - Main executables
+;; ============================================================================
+
+;; UCI Protocol Engine
+
+(executable
+ (name chessml_uci)
+ (public_name chessml-uci)
+ (libraries chessml))
+
+;; XBoard Protocol Engine
+
+(executable
+ (name chessml_xboard)
+ (public_name chessml-xboard)
+ (libraries chessml))
+
+;; Opening Book Creator
+
+(executable
+ (name create_book)
+ (public_name create-book)
+ (libraries chessml))

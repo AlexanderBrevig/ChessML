@@ -1,0 +1,26 @@
+(library
+ (name chessml_engine)
+ (public_name chessml.engine)
+ (flags
+  (:standard -w -32-69))
+ (libraries chessml.core unix threads.posix)
+ (modules
+  config
+  killers
+  history
+  countermoves
+  see
+  search_common
+  concurrent_tt
+  parallel_search
+  root_split_search
+  position
+  magic
+  movegen
+  zobrist
+  game
+  eval
+  search
+  perft
+  polyglot
+  opening_book))

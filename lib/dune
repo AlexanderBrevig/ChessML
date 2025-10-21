@@ -1,0 +1,7 @@
+(library
+ (name chessml)
+ (public_name chessml)
+ (flags
+  (:standard -w -32-69))
+ (libraries chessml.core chessml.engine chessml.protocols)
+ (modules chessml))

@@ -1,0 +1,81 @@
+;; ============================================================================
+;; Engine Tests - Core game logic and state management
+;; ============================================================================
+
+(test
+ (name test_position)
+ (libraries chessml alcotest))
+
+(test
+ (name test_game)
+ (libraries chessml alcotest))
+
+(test
+ (name test_zobrist)
+ (libraries chessml alcotest))
+
+;; ============================================================================
+;; Evaluation Tests
+;; ============================================================================
+
+(test
+ (name test_eval)
+ (libraries chessml alcotest))
+
+(test
+ (name test_pawn_structure)
+ (libraries chessml alcotest))
+
+(test
+ (name test_see)
+ (libraries chessml alcotest))
+
+(test
+ (name test_threat_detection)
+ (libraries chessml alcotest))
+
+;; ============================================================================
+;; Move Generation Tests - Special moves
+;; ============================================================================
+
+(test
+ (name test_castling)
+ (libraries chessml alcotest))
+
+(test
+ (name test_promotion)
+ (libraries chessml alcotest))
+
+(test
+ (name test_en_passant)
+ (libraries chessml alcotest))
+
+;; ============================================================================
+;; Search Tests - Move ordering and search algorithms
+;; ============================================================================
+
+(test
+ (name test_search)
+ (libraries chessml alcotest)
+ (action
+  (run %{exe:test_search.exe} -q)))
+
+(test
+ (name test_killers)
+ (libraries chessml alcotest))
+
+(test
+ (name test_history)
+ (libraries chessml alcotest))
+
+(test
+ (name test_mvv_lva)
+ (libraries chessml alcotest))
+
+;; ============================================================================
+;; Regression Tests
+;; ============================================================================
+
+(executable
+ (name test_illegal_move_regression)
+ (libraries chessml))

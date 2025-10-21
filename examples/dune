@@ -1,0 +1,154 @@
+;; ============================================================================
+;; Core Examples - Educational and Demonstration
+;; ============================================================================
+
+(executable
+ (name debug_bxc6)
+ (modules debug_bxc6)
+ (libraries chessml))
+
+(executable
+ (name debug_bxc6_v2)
+ (modules debug_bxc6_v2)
+ (libraries chessml))
+
+(executable
+ (name debug_eval_breakdown)
+ (modules debug_eval_breakdown)
+ (libraries chessml))
+
+(executable
+ (name perft_example)
+ (modules perft_example)
+ (libraries chessml))
+
+(executable
+ (name search_example)
+ (modules search_example)
+ (libraries chessml))
+
+(executable
+ (name move_ordering_demo)
+ (modules move_ordering_demo)
+ (libraries chessml))
+
+(executable
+ (name history_demo)
+ (modules history_demo)
+ (libraries chessml))
+
+(executable
+ (name quiescence_test)
+ (modules quiescence_test)
+ (libraries chessml))
+
+;; ============================================================================
+;; Feature Tests - Test specific chess concepts
+;; ============================================================================
+
+(executable
+ (name test_castling_incentive)
+ (modules test_castling_incentive)
+ (libraries chessml))
+
+(executable
+ (name test_development)
+ (modules test_development)
+ (libraries chessml))
+
+(executable
+ (name test_futility)
+ (modules test_futility)
+ (libraries chessml unix))
+
+(executable
+ (name test_lmr)
+ (modules test_lmr)
+ (libraries chessml unix))
+
+(executable
+ (name test_null_move)
+ (modules test_null_move)
+ (libraries chessml unix))
+
+;; ============================================================================
+;; Search Benchmarks - Single-threaded performance analysis
+;; ============================================================================
+
+(executable
+ (name search_bench)
+ (modules search_bench)
+ (libraries chessml unix))
+
+(executable
+ (name search_single_bench)
+ (modules search_single_bench)
+ (libraries chessml unix))
+
+(executable
+ (name compare_search_implementations)
+ (modules compare_search_implementations)
+ (libraries chessml unix))
+
+(executable
+ (name profile_test)
+ (modules profile_test)
+ (libraries chessml unix))
+
+;; ============================================================================
+;; Parallel Search - Multi-threaded benchmarks and analysis
+;; ============================================================================
+
+(executable
+ (name parallel_bench)
+ (modules parallel_bench)
+ (libraries chessml unix))
+
+(executable
+ (name quick_parallel_test)
+ (modules quick_parallel_test)
+ (libraries chessml unix))
+
+(executable
+ (name parallel_quality_test)
+ (modules parallel_quality_test)
+ (libraries chessml unix))
+
+(executable
+ (name speedup_analysis)
+ (modules speedup_analysis)
+ (libraries chessml unix))
+
+(executable
+ (name bench_breakdown)
+ (modules bench_breakdown)
+ (libraries chessml unix))
+
+;; ============================================================================
+;; Opening Book Utilities
+;; ============================================================================
+
+(executable
+ (name book_test)
+ (modules book_test)
+ (libraries chessml))
+
+(executable
+ (name create_expanded_book)
+ (modules create_expanded_book)
+ (libraries chessml))
+
+(executable
+ (name dump_book)
+ (modules dump_book)
+ (libraries unix))
+
+(executable
+ (name search_book)
+ (modules search_book)
+ (libraries chessml))
+
+(executable
+ (name polyglot_demo)
+ (modules polyglot_demo)
+ (libraries chessml unix))

@@ -1,0 +1,19 @@
+;; ============================================================================
+;; Core Module Tests - Fundamental data structures
+;; ============================================================================
+
+(test
+ (name test_types)
+ (libraries chessml alcotest))
+
+(test
+ (name test_square)
+ (libraries chessml alcotest))
+
+(test
+ (name test_bitboard)
+ (libraries chessml alcotest))
+
+(test
+ (name test_move)
+ (libraries chessml alcotest))

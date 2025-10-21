@@ -1,0 +1,7 @@
+(library
+ (name chessml_protocols)
+ (public_name chessml.protocols)
+ (flags
+  (:standard -w -32-69))
+ (libraries chessml.core chessml.engine unix)
+ (modules xboard uci))

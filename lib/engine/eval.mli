@@ -1,0 +1,27 @@
+(** Position evaluation *)
+
+open Chessml_core
+
+(** Evaluate a position from the perspective of the side to move.
+    Positive scores favor the side to move, negative scores favor the opponent.
+    Returns score in centipawns (100 = 1 pawn advantage) *)
+val evaluate : Position.t -> int
+
+(** Get the material value of a piece in centipawns *)
+val piece_value : Types.piece -> int
+
+(** Get piece value by kind only *)
+val piece_kind_value : Types.piece_kind -> int
+
+(** Check if a piece on a square is hanging (attacked and undefended, or bad trade).
+    Returns true if the piece can be captured with material gain. *)
+val is_piece_hanging : Position.t -> Square.t -> bool
+
+(** Check if a piece is en prise (can be captured immediately with material gain).
+    Similar to is_piece_hanging but focuses on immediate captures. *)
+val is_piece_en_prise : Position.t -> Square.t -> bool
+
+(** Evaluate threats to a specific piece on a square.
+    Returns negative value if piece is under threat (more negative = worse).
+    Returns 0 if piece is safe. *)
+val evaluate_piece_threats : Position.t -> Square.t -> int
