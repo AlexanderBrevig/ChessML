@@ -23,8 +23,8 @@ sudo apt install opam pychess stockfish
 
 # Initialize OCaml environment
 opam init
-opam switch create 5.4.0
-opam switch 5.4.0
+opam switch create 5.3.0
+opam switch 5.3.0
 eval (opam env)
 opam install dune alcotest ocaml-lsp-server ocamlformat
 ```
