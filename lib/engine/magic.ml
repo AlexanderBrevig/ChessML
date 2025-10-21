@@ -377,7 +377,6 @@ let bishop_magic_numbers =
 
 (** Initialize magic bitboards *)
 let init () =
-  Printf.eprintf "Initializing magic bitboards...\n%!";
   let rook_offset = ref 0 in
   let bishop_offset = ref 0 in
   (* Initialize rook magics *)
@@ -413,11 +412,7 @@ let init () =
          bishop_attacks_table.(idx) <- attacks)
       configs;
     bishop_offset := !bishop_offset + (1 lsl bits)
-  done;
-  Printf.eprintf
-    "Magic bitboards initialized: %d rook entries, %d bishop entries\n%!"
-    !rook_offset
-    !bishop_offset
+  done
 ;;
 
 (** Fast rook attack lookup *)
