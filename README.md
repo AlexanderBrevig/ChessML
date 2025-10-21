@@ -18,11 +18,28 @@ Play chess against ChessML using PyChess or any UCI- or XBoard-compatible GUI! â
 
 ```bash
 # Ubuntu/Debian
-sudo apt install opam pychess
+sudo apt install opam pychess stockfish
+# you also need to install cutechess, see below
 
 # Initialize OCaml environment
 opam init
-opam install dune alcotest
+opam switch create 5.4.0
+opam switch 5.4.0
+eval (opam env)
+opam install dune alcotest ocaml-lsp-server ocamlformat
+```
+
+Cutechess install
+
+```bash
+sudo apt install git build-essential cmake qtbase5-dev qtbase5-dev-tools libqt5svg5-dev
+git clone git@github.com:cutechess/cutechess.git
+cd cutechess
+mkdir build
+cd build
+cmake ..
+make
+cp cutechess cutechess-cli /usr/local/bin # copy binaries to some directory in your path or add $PWD to $PATH
 ```
 
 ### Build the Engine
