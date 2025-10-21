@@ -77,3 +77,26 @@ let print_config () =
   Printf.printf "Debug output: %b\n" !config.debug_output;
   Printf.printf "=============================\n"
 ;;
+
+(** Get potential paths for opening book file
+    
+    Returns a list of paths to try for the opening book, in order of preference:
+    1. Current directory (./book.bin)
+    2. XDG_DATA_HOME/chessml/book.bin (typically ~/.local/share/chessml/book.bin)
+    3. ~/.chessml/book.bin (fallback for non-XDG systems)
+    4. /usr/local/share/chessml/book.bin (system-wide installation)
+    5. /usr/share/chessml/book.bin (system-wide installation)
+*)
+let get_book_paths () =
+  let home = Sys.getenv_opt "HOME" |> Option.value ~default:"" in
+  let xdg_data_home =
+    Sys.getenv_opt "XDG_DATA_HOME"
+    |> Option.value ~default:(Filename.concat home ".local/share")
+  in
+  [ "book.bin" (* Current directory *)
+  ; Filename.concat (Filename.concat xdg_data_home "chessml") "book.bin"
+  ; Filename.concat (Filename.concat home ".chessml") "book.bin"
+  ; "/usr/local/share/chessml/book.bin"
+  ; "/usr/share/chessml/book.bin"
+  ]
+;;

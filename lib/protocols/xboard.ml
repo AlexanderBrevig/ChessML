@@ -75,16 +75,7 @@ let main_loop () =
   let opponent_time = ref 30000 in
   (* Opponent time remaining *)
   (* Try to load opening book from multiple locations *)
-  let try_book_paths =
-    [ "book.bin"
-    ; (* Current directory *)
-      "/home/ab/github.com/chessml/book.bin"
-    ; (* Absolute path *)
-      Filename.concat
-        (Sys.getenv_opt "HOME" |> Option.value ~default:"/home/ab")
-        "github.com/chessml/book.bin"
-    ]
-  in
+  let try_book_paths = Config.get_book_paths () in
   let rec try_open_book = function
     | [] -> None
     | path :: rest ->

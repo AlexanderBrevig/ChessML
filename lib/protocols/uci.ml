@@ -220,16 +220,7 @@ let calculate_depth (params : search_params) (side_to_move : Types.color) : int 
 let main_loop () =
   let game = ref (Game.default ()) in
   (* Try to load opening book from multiple locations *)
-  let try_book_paths =
-    [ "book.bin"
-    ; (* Current directory *)
-      "/home/ab/github.com/chessml/book.bin"
-    ; (* Absolute path *)
-      Filename.concat
-        (Sys.getenv_opt "HOME" |> Option.value ~default:"/home/ab")
-        "github.com/chessml/book.bin"
-    ]
-  in
+  let try_book_paths = Config.get_book_paths () in
   let rec try_open_book = function
     | [] -> None
     | path :: rest ->
