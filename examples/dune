@@ -3,21 +3,6 @@
 ;; ============================================================================
 
 (executable
- (name debug_bxc6)
- (modules debug_bxc6)
- (libraries chessml))
-
-(executable
- (name debug_bxc6_v2)
- (modules debug_bxc6_v2)
- (libraries chessml))
-
-(executable
- (name debug_eval_breakdown)
- (modules debug_eval_breakdown)
- (libraries chessml))
-
-(executable
  (name perft_example)
  (modules perft_example)
  (libraries chessml))
