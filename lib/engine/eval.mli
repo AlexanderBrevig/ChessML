@@ -4,8 +4,16 @@ open Chessml_core
 
 (** Evaluate a position from the perspective of the side to move.
     Positive scores favor the side to move, negative scores favor the opponent.
-    Returns score in centipawns (100 = 1 pawn advantage) *)
-val evaluate : Position.t -> int
+    Returns score in centipawns (100 = 1 pawn advantage).
+    Optional history parameter allows repetition-aware evaluation. *)
+val evaluate : ?history:int64 list -> Position.t -> int
+
+(** Count repetitions of a position key in the game history.
+    Returns number of times this position has appeared. *)
+val count_repetitions : int64 -> int64 list -> int
+
+(** Count material for a given color in centipawns *)
+val count_material : Position.t -> Types.color -> int
 
 (** Get the material value of a piece in centipawns *)
 val piece_value : Types.piece -> int

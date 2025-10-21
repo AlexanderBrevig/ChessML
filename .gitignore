@@ -6,6 +6,7 @@ _build/
 !chessml.opam
 
 # Generated files
+openings/**
 book.bin
 *.exe
 *.o

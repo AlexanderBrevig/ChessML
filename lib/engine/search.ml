@@ -446,6 +446,7 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
   : search_result
   =
   let pos = Game.position game in
+  let game_history = Game.history game in
   let start_time = Unix.gettimeofday () in
   let total_nodes = ref 0L in
   (* Convert max_time_ms to seconds for comparison *)
@@ -475,13 +476,39 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
            depth_nodes
            None
        in
+       (* Apply repetition adjustment to the score at root level *)
+       let adjusted_score =
+         match best_move with
+         | Some mv ->
+           let new_pos = Position.make_move pos mv in
+           let new_key = Zobrist.compute new_pos in
+           let material_diff = Eval.count_material pos (Position.side_to_move pos)
+                               - Eval.count_material pos (Color.opponent (Position.side_to_move pos)) in
+           let repetition_count = Eval.count_repetitions new_key game_history in
+           if repetition_count > 0 then
+             let base_penalty = 150 in
+             let scaling = if repetition_count >= 2 then 2 else 1 in
+             if material_diff > 200 then
+               score - (base_penalty * scaling) (* Penalize repetition when winning *)
+             else if material_diff < -200 then
+               score + (base_penalty * scaling) (* Favor repetition when losing *)
+             else if material_diff > 50 then
+               score - (base_penalty / 2 * scaling)
+             else if material_diff < -50 then
+               score + (base_penalty / 2 * scaling)
+             else
+               score - (base_penalty / 4 * scaling) (* Slight penalty when equal *)
+           else
+             score
+         | None -> score
+       in
        let depth_end = Unix.gettimeofday () in
        let depth_elapsed = depth_end -. depth_start in
        (* Update total node count *)
        total_nodes := Int64.add !total_nodes !depth_nodes;
        (* Store result for this depth *)
        let current_result =
-         { best_move; score; nodes = !total_nodes; depth = current_depth }
+         { best_move; score = adjusted_score; nodes = !total_nodes; depth = current_depth }
        in
        best_result := Some current_result;
        (* Check time limit *)
@@ -508,25 +535,25 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
            (match best_move with
             | Some mv -> Move.to_uci mv
             | None -> "none")
-           score
+           adjusted_score
            !depth_nodes
            depth_elapsed;
          flush stderr);
        (* Early termination for mate *)
-       if abs score >= mate_threshold
+       if abs adjusted_score >= mate_threshold
        then (
          if verbose
          then (
            Printf.eprintf "Mate found at depth %d, stopping search\n" current_depth;
            flush stderr);
          (* Convert mate score to mate-in-X *)
-         let mate_in = ((mate_score - abs score) / 2) + 1 in
+         let mate_in = ((mate_score - abs adjusted_score) / 2) + 1 in
          if verbose
          then (
            Printf.eprintf "Mate in %d moves\n" mate_in;
            flush stderr);
          (* Return result with mate score *)
-         let final_result = { current_result with score } in
+         let final_result = { current_result with score = adjusted_score } in
          best_result := Some final_result;
          (* Break out of loop early *)
          raise Exit)

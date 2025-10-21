@@ -111,4 +111,22 @@ let to_uci mv =
   from_str ^ to_str ^ promo_str
 ;;
 
+let move_kind_to_string k =
+  match k with
+  | Quiet -> "Quiet"
+  | PawnDoublePush -> "PawnDoublePush"
+  | ShortCastle -> "ShortCastle"
+  | LongCastle -> "LongCastle"
+  | Capture -> "Capture"
+  | EnPassantCapture -> "EnPassantCapture"
+  | PromoteQueen -> "PromoteQueen"
+  | PromoteRook -> "PromoteRook"
+  | PromoteBishop -> "PromoteBishop"
+  | PromoteKnight -> "PromoteKnight"
+  | CaptureAndPromoteQueen -> "CaptureAndPromoteQueen"
+  | CaptureAndPromoteRook -> "CaptureAndPromoteRook"
+  | CaptureAndPromoteBishop -> "CaptureAndPromoteBishop"
+  | CaptureAndPromoteKnight -> "CaptureAndPromoteKnight"
+;;
+
 let to_string = to_uci

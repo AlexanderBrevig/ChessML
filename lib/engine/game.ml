@@ -28,6 +28,7 @@ let make position =
 let default () = make (Position.default ())
 let from_fen fen = make (Position.of_fen fen)
 let position game = game.position
+let history game = game.history
 
 let make_move game mv =
   let new_pos = Position.make_move game.position mv in

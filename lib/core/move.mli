@@ -36,4 +36,5 @@ val is_en_passant : t -> bool
 val promotion : t -> piece_kind option
 val of_uci : string -> t
 val to_uci : t -> string
+val move_kind_to_string : move_kind -> string
 val to_string : t -> string

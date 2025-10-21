@@ -914,8 +914,63 @@ let evaluate_development (pos : Position.t) (color : color) : int =
     !bonus)
 ;;
 
+(** Check if position is approaching repetition by looking at history 
+    Returns: 0 = no repetition, 1 = position seen once, 2+ = multiple repetitions *)
+let count_repetitions (pos_key : int64) (history : int64 list) : int =
+  let rec count key hist skip_next =
+    match hist with
+    | [] -> 0
+    | h :: rest ->
+      if skip_next
+      then count key rest false (* Skip every other position - different side to move *)
+      else if h = key
+      then 1 + count key rest true
+      else count key rest true
+  in
+  count pos_key history true
+;;
+
+(** Evaluate repetition bonus/penalty based on material situation 
+    Returns adjustment in centipawns *)
+let evaluate_repetition_incentive
+      (pos : Position.t)
+      (history : int64 list)
+      (material_diff : int)
+  : int
+  =
+  let pos_key = Zobrist.compute pos in
+  let repetition_count = count_repetitions pos_key history in
+  if repetition_count = 0
+  then 0
+  else (
+    (* Position has occurred before - apply incentive based on material situation *)
+    let base_penalty = 150 in
+    (* Larger penalty/bonus for repetitions *)
+    let scaling_factor = if repetition_count >= 2 then 2 else 1 in
+    (* Stronger for 2nd repetition *)
+    if material_diff > 200
+    then
+      (* We're winning - strongly avoid repetition *)
+      -(base_penalty * scaling_factor)
+    else if material_diff < -200
+    then
+      (* We're losing - seek repetition for a draw *)
+      base_penalty * scaling_factor
+    else if material_diff > 50
+    then
+      (* Slightly ahead - discourage repetition *)
+      -(base_penalty / 2 * scaling_factor)
+    else if material_diff < -50
+    then
+      (* Slightly behind - encourage repetition *)
+      base_penalty / 2 * scaling_factor
+    else
+      (* Equal position - small penalty to avoid repetition *)
+      -(base_penalty / 4 * scaling_factor))
+;;
+
 (** Evaluate with material and piece-square tables - OPTIMIZED single-pass *)
-let evaluate (pos : Position.t) : int =
+let evaluate ?(history = []) (pos : Position.t) : int =
   let side = Position.side_to_move pos in
   (* Single pass: collect all data in one loop *)
   let our_material = ref 0 in
@@ -1101,6 +1156,8 @@ let evaluate (pos : Position.t) : int =
     let their_safety = evaluate_piece_safety pos (Color.opponent side) in
     our_safety - their_safety
   in
+  (* Repetition incentive - avoid when winning, seek when losing *)
+  let repetition_incentive = evaluate_repetition_incentive pos history material_diff in
   (* Return score from side-to-move perspective *)
   material_diff
   + position_diff
@@ -1110,4 +1167,5 @@ let evaluate (pos : Position.t) : int =
   + development_bonus
   + bishop_pair_bonus
   + safety_bonus
+  + repetition_incentive
 ;;

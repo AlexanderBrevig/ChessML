@@ -42,6 +42,7 @@ module Root_split_search = Engine.Root_split_search
 module Search_common = Engine.Search_common
 module Polyglot = Engine.Polyglot
 module Opening_book = Engine.Opening_book
+module Pgn_parser = Engine.Pgn_parser
 
 (* Protocol modules - for convenience, re-export at top level *)
 module Uci = Protocols.Uci

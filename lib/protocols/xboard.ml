@@ -159,7 +159,7 @@ let main_loop () =
         else (
           let search_time_ms = calculate_search_time_ms !my_time in
           (* Limit search depth when very low on time *)
-          let max_depth = if !my_time < 100 then 3 else 5 in
+          let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
           match find_move opening_book !game search_time_ms max_depth log with
           | Some mv ->
             let move_str = move_to_xboard_notation mv in
@@ -229,7 +229,7 @@ let main_loop () =
                  flush stdout)
                else (
                  let search_time_ms = calculate_search_time_ms !my_time in
-                 let max_depth = if !my_time < 100 then 3 else 5 in
+                 let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
                  Printf.fprintf
                    log
                    "Starting search at depth %d with %dms time limit...\n"
@@ -319,7 +319,7 @@ let main_loop () =
                flush stdout)
              else (
                let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth = if !my_time < 100 then 3 else 5 in
+               let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
                let result =
                  Search.find_best_move
                    ~verbose:false
@@ -368,7 +368,7 @@ let main_loop () =
                flush stdout)
              else (
                let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth = if !my_time < 100 then 3 else 5 in
+               let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
                let result =
                  Search.find_best_move
                    ~verbose:false
@@ -419,7 +419,7 @@ let main_loop () =
                flush stdout)
              else (
                let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth = if !my_time < 100 then 3 else 5 in
+               let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
                let result =
                  Search.find_best_move
                    ~verbose:false

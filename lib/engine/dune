@@ -3,7 +3,7 @@
  (public_name chessml.engine)
  (flags
   (:standard -w -32-69))
- (libraries chessml.core unix threads.posix)
+ (libraries chessml.core unix threads.posix str)
  (modules
   config
   killers
@@ -24,4 +24,5 @@
   search
   perft
   polyglot
-  opening_book))
+  opening_book
+  pgn_parser))

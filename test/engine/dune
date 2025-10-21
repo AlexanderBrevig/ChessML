@@ -34,6 +34,10 @@
  (name test_threat_detection)
  (libraries chessml alcotest))
 
+(test
+ (name test_repetition)
+ (libraries chessml alcotest))
+
 ;; ============================================================================
 ;; Move Generation Tests - Special moves
 ;; ============================================================================
@@ -79,3 +83,11 @@
 (executable
  (name test_illegal_move_regression)
  (libraries chessml))
+
+;; ============================================================================
+;; PGN Parser Tests
+;; ============================================================================
+
+(test
+ (name test_pgn_parser)
+ (libraries chessml alcotest))
