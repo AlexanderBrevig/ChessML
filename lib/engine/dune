@@ -9,6 +9,7 @@
   killers
   history
   countermoves
+  piece_tables
   see
   search_common
   concurrent_tt

@@ -455,8 +455,7 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
     | None -> None
   in
   (* Clear transposition table for new search *)
-  (* Note: In a real engine, you might want to preserve entries between moves *)
-
+  TranspositionTable.clear tt;
   (* Clear killer moves for new search *)
   Killers.clear_global ();
   (* Age history table (don't clear completely - keep accumulated knowledge) *)

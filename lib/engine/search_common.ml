@@ -77,8 +77,8 @@ module LateMove = struct
   let move_count_threshold depth improving =
     let base =
       match depth with
-      | 1 -> 3
-      | 2 -> 5
+      | 1 -> 1000 (* Don't prune at depth 1 - need to see all moves! *)
+      | 2 -> 1000 (* Don't prune at depth 2 either - too shallow *)
       | 3 -> 8
       | 4 -> 12
       | 5 -> 18
@@ -90,7 +90,8 @@ module LateMove = struct
 
   (** Should we prune this late quiet move? *)
   let should_prune depth move_num improving in_check is_tactical =
-    depth <= 6
+    depth >= 3 (* Only prune at depth 3+ *)
+    && depth <= 6
     && (not in_check)
     && (not is_tactical)
     && move_num > move_count_threshold depth improving

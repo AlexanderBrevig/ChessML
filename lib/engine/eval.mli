@@ -13,6 +13,15 @@ val piece_value : Types.piece -> int
 (** Get piece value by kind only *)
 val piece_kind_value : Types.piece_kind -> int
 
+(** Get piece-square table bonus for a piece at a specific square *)
+val piece_square_value : Types.piece -> Square.t -> int
+
+(** Get total value of a piece on a square: material + positional bonus *)
+val piece_total_value : Types.piece -> Square.t -> int
+
+(** Get total value for a piece kind on a square (requires color for PST lookup) *)
+val piece_kind_total_value : Types.piece_kind -> Types.color -> Square.t -> int
+
 (** Check if a piece on a square is hanging (attacked and undefended, or bad trade).
     Returns true if the piece can be captured with material gain. *)
 val is_piece_hanging : Position.t -> Square.t -> bool

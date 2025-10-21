@@ -261,6 +261,16 @@ module PieceKind = struct
   ;;
 
   let to_string kind = String.make 1 (to_char kind)
+
+  (** Piece values in centipawns (100 = one pawn) *)
+  let value = function
+    | Pawn -> 100
+    | Knight -> 320
+    | Bishop -> 330
+    | Rook -> 500
+    | Queen -> 900
+    | King -> 20000 (* King is invaluable but give it a high value for MVV-LVA *)
+  ;;
 end
 
 (** A chess piece with color and kind *)

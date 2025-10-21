@@ -34,16 +34,8 @@ let count_pawns_on_file_bb pos file_int color =
   Bitboard.population (Int64.logand pawns !file_mask)
 ;;
 
-(** Piece values in centipawns (by kind) *)
-let piece_kind_value (kind : piece_kind) : int =
-  match kind with
-  | Pawn -> 100
-  | Knight -> 320
-  | Bishop -> 330
-  | Rook -> 500
-  | Queen -> 900
-  | King -> 20000 (* King is invaluable but give it a high value for MVV-LVA *)
-;;
+(** Piece values in centipawns (by kind) - delegate to Types module *)
+let piece_kind_value (kind : piece_kind) : int = PieceKind.value kind
 
 (** Get piece value (convenience wrapper) *)
 let piece_value (piece : piece) : int = piece_kind_value piece.kind
@@ -462,15 +454,18 @@ let king_middlegame_table =
 
 (** Get piece-square table value for a piece at a square *)
 let piece_square_value (piece : piece) (sq : int) : int =
-  (* Flip square for black pieces *)
-  let table_sq = if piece.color = White then sq else sq lxor 56 in
-  match piece.kind with
-  | Pawn -> pawn_table.(table_sq)
-  | Knight -> knight_table.(table_sq)
-  | Bishop -> bishop_table.(table_sq)
-  | Rook -> rook_table.(table_sq)
-  | Queen -> queen_table.(table_sq)
-  | King -> king_middlegame_table.(table_sq)
+  Piece_tables.piece_square_value piece sq
+;;
+
+(** Get total value of a piece on a square: material + positional bonus 
+    This gives the true value of the piece considering its position. *)
+let piece_total_value (piece : piece) (sq : int) : int =
+  Piece_tables.piece_total_value piece sq
+;;
+
+(** Get total value for a piece kind on a square (requires color for PST lookup) *)
+let piece_kind_total_value (kind : piece_kind) (color : color) (sq : int) : int =
+  Piece_tables.piece_kind_total_value kind color sq
 ;;
 
 (** Count material for a given color *)
@@ -697,128 +692,36 @@ let is_square_attacked (pos : Position.t) (sq : int) (by_color : color) : bool =
     knight_offsets
 ;;
 
-(** Get all attackers of a square using move generation *)
-let get_attackers_list (pos : Position.t) (sq : Square.t) (by_color : color)
-  : (Square.t * piece_kind) list
-  =
-  let attackers = ref [] in
-  let occupied = Position.occupied pos in
-  (* Check all pieces of the attacking color *)
-  let pieces = Position.get_color_pieces pos by_color in
-  Bitboard.iter
-    (fun from_sq ->
-       match Position.piece_at pos from_sq with
-       | Some piece when piece.color = by_color ->
-         (* Check if this piece attacks the target square *)
-         let attacks = Movegen.attacks_for piece from_sq occupied in
-         if Bitboard.contains attacks sq
-         then attackers := (from_sq, piece.kind) :: !attackers
-       | _ -> ())
-    pieces;
-  !attackers
-;;
-
-(** Get all defenders of a square *)
-let get_defenders_list (pos : Position.t) (sq : Square.t) (color : color)
-  : (Square.t * piece_kind) list
-  =
-  get_attackers_list pos sq color
-;;
-
-(** Count attackers and defenders of a square *)
-let count_attackers_defenders (pos : Position.t) (sq : Square.t) (piece_color : color)
-  : int * int
-  =
-  let opponent = Color.opponent piece_color in
-  let attackers = List.length (get_attackers_list pos sq opponent) in
-  let defenders = List.length (get_defenders_list pos sq piece_color) in
-  attackers, defenders
-;;
-
-(** Calculate the value at risk using SEE (Static Exchange Evaluation) *)
-let calculate_exchange_value (pos : Position.t) (sq : Square.t) : int =
-  match Position.piece_at pos sq with
-  | None -> 0
-  | Some piece ->
-    let piece_val = piece_kind_value piece.kind in
-    let opponent = Color.opponent piece.color in
-    (* Get all attackers from opponent *)
-    let attackers = get_attackers_list pos sq opponent in
-    if attackers = []
-    then 0 (* No threats *)
-    else (
-      (* Find the least valuable attacker *)
-      let min_attacker =
-        List.fold_left
-          (fun acc (_, kind) ->
-             let val_ = piece_kind_value kind in
-             min acc val_)
-          10000
-          attackers
-      in
-      (* Simplified SEE: if attacked by lower value piece, we're in danger *)
-      if min_attacker < piece_val
-      then (
-        (* Get defenders *)
-        let defenders = get_defenders_list pos sq piece.color in
-        if defenders = []
-        then
-          (* No defenders - piece is hanging! *)
-          -piece_val
-        else (
-          (* Has defenders - but is it enough? *)
-          let min_defender =
-            List.fold_left
-              (fun acc (_, kind) ->
-                 let val_ = piece_kind_value kind in
-                 min acc val_)
-              10000
-              defenders
-          in
-          (* If we defend with a more valuable piece, it's risky *)
-          if min_defender > min_attacker
-          then
-            (* Bad trade: we'll lose more than we gain *)
-            -(min_defender - min_attacker)
-          else
-            (* Reasonable trade or defended adequately *)
-            0))
-      else 0 (* Attacked by equal or higher value - okay *))
-;;
-
-(** Check if a piece is hanging (undefended or bad trade) *)
+(** Check if a piece is hanging (can be captured with material gain) using proper SEE *)
 let is_piece_hanging (pos : Position.t) (sq : Square.t) : bool =
   match Position.piece_at pos sq with
   | None -> false
   | Some piece ->
     let opponent = Color.opponent piece.color in
-    let attackers = get_attackers_list pos sq opponent in
-    if attackers = []
-    then false (* Not attacked *)
-    else (
-      let defenders = get_defenders_list pos sq piece.color in
-      if defenders = []
-      then true (* Attacked with no defenders = hanging *)
-      else (
-        (* Check if it's a bad trade *)
-        let piece_val = piece_kind_value piece.kind in
-        let min_attacker_val =
-          List.fold_left
-            (fun acc (_, kind) -> min acc (piece_kind_value kind))
-            10000
-            attackers
-        in
-        let min_defender_val =
-          List.fold_left
-            (fun acc (_, kind) -> min acc (piece_kind_value kind))
-            10000
-            defenders
-        in
-        (* Hanging if: attacked by cheaper piece AND no adequate defender *)
-        min_attacker_val < piece_val && min_defender_val > min_attacker_val))
+    let opponent_pieces = Position.get_color_pieces pos opponent in
+    let occupied = Position.occupied pos in
+    let has_winning_capture = ref false in
+    (* Check if any opponent piece can capture with a winning exchange using SEE *)
+    Bitboard.iter
+      (fun from_sq ->
+         if not !has_winning_capture
+         then (
+           match Position.piece_at pos from_sq with
+           | Some attacker when attacker.color = opponent ->
+             let attacks = Movegen.attacks_for attacker from_sq occupied in
+             if Bitboard.contains attacks sq
+             then (
+               (* Create a capture move and evaluate using proper SEE *)
+               let capture_move = Move.make from_sq sq Move.Capture in
+               let see_value = See.evaluate pos capture_move in
+               (* Positive SEE means attacker wins material - piece is hanging *)
+               if see_value > 0 then has_winning_capture := true)
+           | _ -> ()))
+      opponent_pieces;
+    !has_winning_capture
 ;;
 
-(** Check if piece is en prise (can be captured with immediate gain) *)
+(** Check if piece is en prise (can be captured with immediate material gain) *)
 let is_piece_en_prise (pos : Position.t) (sq : Square.t) : bool =
   match Position.piece_at pos sq with
   | None -> false
@@ -826,13 +729,58 @@ let is_piece_en_prise (pos : Position.t) (sq : Square.t) : bool =
     if piece.kind = Pawn || piece.kind = King
     then false (* Don't check pawns/king with this function *)
     else (
-      let exchange_val = calculate_exchange_value pos sq in
-      exchange_val < -100 (* Losing at least a pawn's worth *))
+      (* Check if attacked by cheaper piece - simplified but effective *)
+      let piece_value = piece_kind_value piece.kind in
+      let opponent = Color.opponent piece.color in
+      let occupied = Position.occupied pos in
+      let min_attacker_value = ref 10000 in
+      let has_attacker = ref false in
+      let opponent_pieces = Position.get_color_pieces pos opponent in
+      Bitboard.iter
+        (fun attacker_sq ->
+           match Position.piece_at pos attacker_sq with
+           | Some attacker when attacker.color = opponent ->
+             let attacks = Movegen.attacks_for attacker attacker_sq occupied in
+             if Bitboard.contains attacks sq
+             then (
+               has_attacker := true;
+               let attacker_val = piece_kind_value attacker.kind in
+               if attacker_val < !min_attacker_value
+               then min_attacker_value := attacker_val)
+           | _ -> ())
+        opponent_pieces;
+      (* En prise if attacked by significantly cheaper piece (at least pawn value difference) *)
+      !has_attacker && !min_attacker_value + 100 < piece_value)
 ;;
 
-(** Evaluate threats to a specific piece *)
+(** Evaluate threats to a specific piece - returns negative if piece is at risk *)
 let evaluate_piece_threats (pos : Position.t) (sq : Square.t) : int =
-  calculate_exchange_value pos sq
+  match Position.piece_at pos sq with
+  | None -> 0
+  | Some piece ->
+    let piece_value = piece_kind_value piece.kind in
+    let opponent = Color.opponent piece.color in
+    let occupied = Position.occupied pos in
+    let min_attacker_value = ref 10000 in
+    let has_attacker = ref false in
+    let opponent_pieces = Position.get_color_pieces pos opponent in
+    Bitboard.iter
+      (fun attacker_sq ->
+         match Position.piece_at pos attacker_sq with
+         | Some attacker when attacker.color = opponent ->
+           let attacks = Movegen.attacks_for attacker attacker_sq occupied in
+           if Bitboard.contains attacks sq
+           then (
+             has_attacker := true;
+             let attacker_val = piece_kind_value attacker.kind in
+             if attacker_val < !min_attacker_value
+             then min_attacker_value := attacker_val)
+         | _ -> ())
+      opponent_pieces;
+    (* Return the risk differential - negative if under attack by cheaper piece *)
+    if !has_attacker && !min_attacker_value < piece_value
+    then !min_attacker_value - piece_value
+    else 0
 ;;
 
 (** Evaluate bishop pair bonus *)
@@ -842,36 +790,22 @@ let evaluate_bishop_pair (pos : Position.t) (color : color) : int =
   if bishop_count >= 2 then 50 (* Bishop pair bonus *) else 0
 ;;
 
-(** Evaluate piece safety - penalize hanging pieces *)
+(** Evaluate piece safety - penalize hanging pieces using proper SEE *)
 let evaluate_piece_safety (pos : Position.t) (color : color) : int =
   let penalty = ref 0 in
-  (* Check all our pieces for threats *)
+  (* Check all our pieces if they're hanging *)
   let pieces = Position.get_color_pieces pos color in
   Bitboard.iter
     (fun sq ->
        match Position.piece_at pos sq with
        | Some piece when piece.color = color && piece.kind <> Pawn && piece.kind <> King
          ->
-         (* Use SEE-like logic: a hanging piece will likely be captured *)
-         let exchange_val = calculate_exchange_value pos sq in
-         if exchange_val <= -300
-         then
-           (* Piece is completely hanging (minor/major piece)
-             Apply 3x penalty: strikes a balance between preventing hanging piece moves
-             and not over-distorting eval. The 3x multiplier ensures search sees losing
-             a hanging piece as very bad, while still maintaining reasonable eval comparisons *)
-           penalty := !penalty + (exchange_val * 3)
-         else if exchange_val < -200
-         then
-           (* Piece in serious danger *)
-           penalty := !penalty + (exchange_val * 2)
-         else if exchange_val < -50
-         then
-           (* Some threat exists *)
-           penalty := !penalty + (exchange_val * 3 / 2)
-         else
-           (* Minor or no threat *)
-           penalty := !penalty + exchange_val
+         (* Use the is_piece_hanging function which already does SEE *)
+         if is_piece_hanging pos sq
+         then (
+           let piece_val = Piece_tables.piece_total_value piece sq in
+           (* Penalize at full value - the piece is at risk of being lost *)
+           penalty := !penalty - piece_val)
        | _ -> ())
     pieces;
   !penalty

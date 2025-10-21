@@ -86,6 +86,9 @@ module PieceKind : sig
   val to_char : ?uppercase:bool -> t -> char
   val of_char : char -> t
   val to_string : t -> string
+
+  (** Get the centipawn value of a piece kind (100 = one pawn) *)
+  val value : t -> int
 end
 
 module Piece : sig

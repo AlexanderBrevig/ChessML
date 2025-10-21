@@ -35,6 +35,7 @@ module Config = Engine.Config
 module Killers = Engine.Killers
 module History = Engine.History
 module See = Engine.See
+module Piece_tables = Engine.Piece_tables
 module Concurrent_tt = Engine.Concurrent_tt
 module Parallel_search = Engine.Parallel_search
 module Root_split_search = Engine.Root_split_search
