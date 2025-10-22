@@ -75,13 +75,8 @@ let is_threefold_repetition game =
 
 (** Count pieces of a specific kind and color on the board *)
 let count_pieces_on_board pos kind color =
-  let count = ref 0 in
-  for sq = 0 to 63 do
-    match Position.piece_at pos sq with
-    | Some p when p.Types.color = color && p.Types.kind = kind -> count := !count + 1
-    | _ -> ()
-  done;
-  !count
+  let bb = Position.get_pieces pos color kind in
+  Bitboard.population bb
 ;;
 
 (** Get truly legal moves (now using improved movegen) *)
