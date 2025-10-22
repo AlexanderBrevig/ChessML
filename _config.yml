@@ -1,20 +1,39 @@
 # Jekyll configuration for ChessML Documentation
-title: ChessML Documentation
-description: A comprehensive guide to chess programming concepts and techniques
+title: ChessML
+description: A bitboard-based chess engine in OCaml with comprehensive chess programming guides
 url: https://alexanderbrevig.github.io
 baseurl: /chessml
 
 # Theme
 theme: just-the-docs
 
-# Color scheme
+# Color scheme (options: nil, dark, light)
 color_scheme: dark
 
-# Logo
-# logo: "/assets/images/logo.png"
+# Logo (uncomment when you add a logo)
+# logo: "/assets/images/chessml-logo.png"
+
+# Callouts (for tips, warnings, notes)
+callouts_level: quiet # or loud
+callouts:
+  highlight:
+    color: yellow
+  important:
+    title: Important
+    color: blue
+  new:
+    title: New
+    color: green
+  note:
+    title: Note
+    color: purple
+  warning:
+    title: Warning
+    color: red
 
 # Enable navigation
 nav_enabled: true
+nav_sort: case_insensitive # or case_sensitive
 
 # Search
 search_enabled: true
@@ -27,13 +46,25 @@ search:
   rel_url: true
   button: false
 
-# Aux links
+# Mermaid diagrams support
+mermaid:
+  version: "10.6.1"
+
+# Aux links (appears in top right)
 aux_links:
-  "ChessML on GitHub":
+  "View on GitHub":
     - "//github.com/AlexanderBrevig/ChessML"
+  "Report Issue":
+    - "//github.com/AlexanderBrevig/ChessML/issues/new"
+
+# Aux links position
+aux_links_new_tab: true
 
 # Footer
-footer_content: 'Copyright &copy; 2025 Alexander Brevig. Licensed under the MIT License.'
+footer_content: 'Copyright &copy; 2025 Alexander Brevig. Distributed under the <a href="https://github.com/AlexanderBrevig/ChessML/blob/main/LICENSE">MIT License</a>.'
+
+# Enable copy button for code blocks
+enable_copy_code_button: true
 
 # Back to top link
 back_to_top: true
@@ -55,9 +86,25 @@ defaults:
 
 # Kramdown settings
 kramdown:
+  syntax_highlighter: rouge
   syntax_highlighter_opts:
+    css_class: 'highlight'
+    default_lang: ocaml
+    # Use monokai.sublime theme (closest to Catppuccin aesthetic)
+    # Other options: gruvbox.dark, base16.monokai.dark, github.dark
     block:
       line_numbers: false
+      start_line: 1
+
+# Plugins
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jemoji
+
+# Emoji settings
+emoji:
+  src: "/assets/images/emoji"
 
 # Exclude from processing
 exclude:

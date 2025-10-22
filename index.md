@@ -19,6 +19,7 @@ ChessML is a chess engine written in OCaml that demonstrates modern chess progra
 ### 🎯 Beginner - Build a Basic Engine
 
 Start with the fundamentals:
+
 1. [Bitboards](docs/bitboards) - Represent the board efficiently
 2. [Alpha-Beta Pruning](docs/alpha-beta-pruning) - Basic search algorithm
 3. [Evaluation Function](docs/evaluation-function) - Material + piece-square tables
@@ -28,16 +29,17 @@ Start with the fundamentals:
 ### 🚀 Intermediate - Add Intelligence
 
 Improve your engine's strength:
+
 4. [Zobrist Hashing](docs/zobrist-hashing) - Position keys for caching
 5. [Transposition Tables](docs/transposition-tables) - Cache search results
-6. [Move Ordering](docs/move-ordering) - Try best moves first
-7. [Quiescence Search](docs/quiescence-search) - Tactical stability
+6. [Move Ordering](docs/move-ordering) - Try best moves first 7. [Quiescence Search](docs/quiescence-search) - Tactical stability
 
 **Result:** ~2000-2200 Elo engine
 
 ### ⚡ Advanced - Optimize Performance
 
 Make your engine competitive:
+
 8. [Magic Bitboards](docs/magic-bitboards) - Fast attack generation
 9. [Null Move Pruning](docs/null-move-pruning) - Aggressive search reduction
 10. [Late Move Reductions](docs/late-move-reductions) - Search deeper efficiently
@@ -62,6 +64,7 @@ Our documentation is organized into clear categories:
 - **Evaluation** - Judging chess positions
 
 Each guide includes:
+
 - Clear explanations of concepts
 - Implementation examples in OCaml
 - Elo impact estimates

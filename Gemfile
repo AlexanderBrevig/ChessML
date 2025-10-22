@@ -3,6 +3,18 @@ source "https://rubygems.org"
 gem "jekyll", "~> 4.3"
 gem "just-the-docs", "0.8.2"
 
+# Optional: Add syntax highlighting with Rouge
+gem "rouge", "~> 4.2"
+
+# Optional: Add emoji support
+gem "jemoji", "~> 0.13"
+
+# Optional: Add SEO plugin
+gem "jekyll-seo-tag", "~> 2.8"
+
+# Optional: Add sitemap generation
+gem "jekyll-sitemap", "~> 1.4"
+
 # Windows and JRuby does not include zoneinfo files, so bundle the tzinfo-data gem
 # and associated library.
 platforms :mingw, :x64_mingw, :mswin, :jruby do

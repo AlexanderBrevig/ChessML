@@ -1,0 +1,198 @@
+// Custom styles for ChessML documentation
+
+// Monokai.sublime color palette (matching syntax highlighting)
+$monokai-bg: #272822;          // Dark background
+$monokai-blue: #66d9ef;        // Keywords, types
+$monokai-green: #a6e22e;       // Functions, success
+$monokai-yellow: #e6db74;      // Strings, highlights
+$monokai-purple: #ae81ff;      // Numbers, special
+$monokai-orange: #f6aa11;      // Built-ins, warnings
+$monokai-red: #f92672;         // Errors, danger
+$monokai-comment: #75715e;     // Comments, muted text
+
+// Add chess piece emoji styling
+.chess-piece {
+  font-size: 1.5em;
+  line-height: 1;
+}
+
+// Performance metrics styling
+.elo-gain {
+  background: linear-gradient(90deg, $monokai-green 0%, darken($monokai-green, 10%) 100%);
+  color: #1a1a1a;
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
+  font-weight: bold;
+  display: inline-block;
+}
+
+.performance-metric {
+  border-left: 4px solid $monokai-yellow;
+  padding-left: 1em;
+  margin: 1em 0;
+  background: rgba(230, 219, 116, 0.05);
+}
+
+// Bitboard visualization
+.bitboard {
+  font-family: 'Courier New', monospace;
+  background: $monokai-bg;
+  color: $monokai-green;
+  padding: 1em;
+  border-radius: 4px;
+  overflow-x: auto;
+  line-height: 1.4;
+}
+
+// Chess position diagrams
+.chess-diagram {
+  font-family: monospace;
+  background: #f5f5f5;
+  padding: 1em;
+  border: 2px solid #333;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+// Dark theme chess diagram
+[data-theme="dark"] .chess-diagram {
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border-color: #555;
+}
+
+// Technique badges
+.technique-badge {
+  display: inline-block;
+  padding: 0.25em 0.6em;
+  margin: 0.2em;
+  border-radius: 12px;
+  font-size: 0.85em;
+  font-weight: 600;
+  
+  &.beginner {
+    background: $monokai-blue;
+    color: #1a1a1a;
+  }
+  
+  &.intermediate {
+    background: $monokai-orange;
+    color: #1a1a1a;
+  }
+  
+  &.advanced {
+    background: $monokai-red;
+    color: white;
+  }
+}
+
+// Code block enhancements
+.highlight {
+  border-radius: 6px;
+  margin: 1em 0;
+}
+
+// Navigation improvements
+.site-title {
+  font-weight: 700;
+  font-size: 1.2em;
+}
+
+// Improve table of contents
+.table-of-contents {
+  background: rgba(102, 217, 239, 0.05);
+  border-left: 4px solid $monokai-blue;
+  padding: 1em;
+  margin: 2em 0;
+  border-radius: 4px;
+  
+  ul {
+    margin-left: 1.5em;
+  }
+}
+
+// Callout boxes (use with Just the Docs callouts)
+.highlight-box {
+  padding: 1em;
+  border-radius: 6px;
+  margin: 1.5em 0;
+  border-left: 4px solid;
+  
+  &.tip {
+    background: rgba(166, 226, 46, 0.1);
+    border-color: $monokai-green;
+  }
+  
+  &.warning {
+    background: rgba(249, 38, 114, 0.1);
+    border-color: $monokai-red;
+  }
+  
+  &.info {
+    background: rgba(102, 217, 239, 0.1);
+    border-color: $monokai-blue;
+  }
+}
+
+// Override Just the Docs callout colors for better contrast
+// Target blockquotes with these classes, not code blocks
+blockquote.highlight {
+  border-color: $monokai-yellow !important;
+  background-color: rgba(230, 219, 116, 0.1) !important;
+  
+  &::before {
+    color: lighten($monokai-yellow, 15%) !important;
+    font-weight: 700 !important;
+  }
+}
+
+blockquote.important {
+  border-color: $monokai-blue !important;
+  background-color: rgba(102, 217, 239, 0.1) !important;
+  
+  &::before {
+    color: lighten($monokai-blue, 20%) !important;
+    font-weight: 700 !important;
+  }
+}
+
+blockquote.warning {
+  border-color: $monokai-red !important;
+  background-color: rgba(249, 38, 114, 0.1) !important;
+  
+  &::before {
+    color: lighten($monokai-red, 15%) !important;
+    font-weight: 700 !important;
+  }
+}
+
+blockquote.note {
+  border-color: $monokai-purple !important;
+  background-color: rgba(174, 129, 255, 0.1) !important;
+  
+  &::before {
+    color: lighten($monokai-purple, 20%) !important;
+    font-weight: 700 !important;
+  }
+}
+
+blockquote.new {
+  border-color: $monokai-green !important;
+  background-color: rgba(166, 226, 46, 0.1) !important;
+  
+  &::before {
+    color: lighten($monokai-green, 15%) !important;
+    font-weight: 700 !important;
+  }
+}
+
+// Responsive improvements
+@media (max-width: 768px) {
+  .bitboard {
+    font-size: 0.85em;
+  }
+  
+  .chess-diagram {
+    font-size: 0.9em;
+  }
+}
