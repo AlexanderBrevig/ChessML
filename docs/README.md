@@ -1,19 +1,20 @@
-# ChessML Engine - Developer Guide
+---
+layout: default
+title: Developer Guide
+nav_order: 3
+description: "ChessML codebase architecture and development workflow"
+permalink: /docs/developer-guide
+---
 
-A high-performance chess engine written in OCaml, implementing modern chess programming techniques.
+# ChessML Developer Guide
 
-## 🎯 Quick Overview
+> **Learning chess programming?** Start with the **[Chess Programming Concepts Guide](chess-programming-guide)** for detailed explanations of all techniques used in this engine.
 
-ChessML is a UCI/XBoard-compatible chess engine featuring:
-
-- **Bitboard-based** move generation
-- **Advanced search** with planned parallel support (in progress)
-- **Sophisticated evaluation** with pawn structure analysis
-- **Opening book** integration
+This document covers the codebase architecture and development workflow for ChessML contributors.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Codebase Architecture
 
 ### Core Modules (`lib/core/`)
 
@@ -38,85 +39,6 @@ ChessML is a UCI/XBoard-compatible chess engine featuring:
 
 ---
 
-## 🔍 Search Techniques
-
-### Core Algorithm
-
-- **Alpha-Beta Pruning**: Minimax with cutoff optimization
-- **Iterative Deepening**: Gradual depth increase with early move ordering
-- **Transposition Table**: Position caching to avoid redundant evaluation
-- **Quiescence Search**: Tactical extension to avoid horizon effect
-
-### Advanced Pruning
-
-- **Null Move Pruning**: Forward pruning by passing the turn
-- **Late Move Reductions (LMR)**: Reduced depth for late moves
-- **Futility Pruning**: Skip nodes unlikely to raise alpha
-- **Reverse Futility Pruning**: Early beta cutoffs in quiet positions
-- **Late Move Pruning**: Skip late quiet moves at low depths
-
-### Move Ordering
-
-- **Hash Move First**: Best move from transposition table
-- **MVV-LVA**: Most Valuable Victim - Least Valuable Attacker
-- **SEE (Static Exchange Evaluation)**: Precise capture evaluation
-- **Killer Moves**: Moves that caused cutoffs at same depth
-- **History Heuristic**: Statistical move success tracking
-- **Countermove Heuristic**: Refutation move pairs
-
----
-
-## 🧮 Evaluation Features
-
-### Material
-
-- Standard piece values (P=100, N=320, B=330, R=500, Q=900)
-- Piece-square tables for positional bonuses
-
-### Pawn Structure
-
-- **Passed Pawns**: Bonus for advancement and protection
-- **Doubled Pawns**: Penalty for stacked pawns
-- **Isolated Pawns**: Penalty for lack of support
-- **Backward Pawns**: Penalty for vulnerable pawns
-- **Pawn Chains**: Bonus for connected pawns
-- **Central Control**: Bonus for center pawns
-
-### Positional
-
-- King safety evaluation
-- Rook on open/semi-open files
-- Bishop pair bonus
-- Knight outposts
-- Development bonuses
-
----
-
-## ⚡ Performance Optimizations
-
-### Bitboard Operations
-
-- **Magic Bitboards**: Fast slider piece move generation
-- **C Stubs**: Performance-critical operations in C
-- **Precomputed Tables**: Attack tables and move masks
-
-### Search Optimization
-
-- **Aspiration Windows**: Narrow alpha-beta bounds
-- **Principal Variation Search (PVS)**: Minimal window re-searches
-- **Parallel Search**: Multi-threaded search with shared TT
-  - Lazy SMP implementation
-  - Root move splitting
-  - Concurrent transposition table
-
-### Memory Efficiency
-
-- Move encoding in 16 bits
-- Packed position representation
-- Efficient hash table implementation
-
----
-
 ## 🧪 Testing Strategy
 
 ### Unit Tests (`test/`)
@@ -136,16 +58,7 @@ ChessML is a UCI/XBoard-compatible chess engine featuring:
 
 ---
 
-## 📊 Opening Book
-
-- **Binary format** for fast loading
-- **Position-based lookup** using Zobrist hashes
-- **Multiple moves per position** with weights
-- **Transposition-aware** book creation
-
----
-
-## 🛠️ Build System
+## ️ Build System
 
 ### Dune Build Files
 
@@ -165,116 +78,85 @@ just test-protocols           # Run protocol tests
 
 ---
 
-## 🎓 Key Concepts for Contributors
+## 💡 Key Implementation Notes
 
-### 1. **Bitboard Representation**
+For detailed explanations of these concepts, see the [Chess Programming Concepts Guide](chess-programming-guide.md).
 
-Each piece type has a 64-bit integer where set bits represent occupied squares.
-
-```ocaml
-type t = int64  (* Each bit = one square *)
-```
-
-### 2. **Move Encoding**
-
-Moves encoded in 16 bits: from (6) + to (6) + flags (4)
-
-```ocaml
-type t = int  (* Packed: FFFFTTTTTTFFFFFF *)
-```
-
-### 3. **Zobrist Hashing**
-
-Incremental position hashing for transposition table:
-
-```ocaml
-hash = hash ^ zobrist_piece[piece][square]
-```
-
-### 4. **Alpha-Beta Search**
-
-```ocaml
-val alphabeta : Position.t -> depth:int -> alpha:int -> beta:int -> int
-```
-
-- Alpha: Best score for maximizing player
-- Beta: Best score for minimizing player
-- Prune when alpha >= beta
-
-### 5. **Transposition Table**
-
-Stores: position hash, depth, score, best move, entry type
-
-```ocaml
-type tt_entry = {
-  key: int64;
-  score: int;
-  depth: int;
-  best_move: Move.t option;
-  entry_type: Exact | LowerBound | UpperBound;
-}
-```
-
-### 6. **Polyglot Opening Book Format**
-
-Binary format for chess opening books (16 bytes per entry)
-
-```ocaml
-(* Entry structure *)
-type entry = {
-  key: int64;      (* Zobrist hash *)
-  move: int;       (* Encoded move *)
-  weight: int;     (* Popularity/strength *)
-  learn: int;      (* Learning data *)
-}
-
-(* Move encoding: from | (to << 6) | (promo << 12) *)
-let encoded = Polyglot.encode_move from_sq to_sq 0
-
-(* Reading from book *)
-match Polyglot.read_entry channel with
-| Some entry -> (* process entry *)
-| None -> (* end of file *)
-
-(* Writing to book *)
-Polyglot.write_entry channel entry
-```
-
-See `examples/polyglot_demo.ml` for complete examples.
+- **Bitboards**: 64-bit integers where each bit represents a square (see `lib/core/bitboard.ml`)
+- **Move Encoding**: 16-bit packed representation (see `lib/core/move.ml`)
+- **Zobrist Hashing**: Incremental position hashing via XOR (see `lib/engine/zobrist.ml`)
+- **Polyglot Books**: Binary format for opening books (see `lib/engine/polyglot.ml` and `examples/polyglot_demo.ml`)
 
 ---
 
-## 📈 Future Improvements Ideas
+## 🔧 Development Workflow
 
-- Improve the book with deeper and more openings
-- Try to get rid of the Position.board field and only use bitboards
+### Running Tests
+
+```bash
+dune runtest                  # Run all tests
+just test                     # Alternative via justfile
+```
+
+### Code Formatting
+
+```bash
+dune fmt                      # Format all code
+ocamlformat --inplace file.ml # Format specific file
+```
+
+### Building
+
+```bash
+dune build                    # Debug build
+dune build --profile=release  # Optimized build
+```
+
+### Benchmarking
+
+```bash
+dune exec --profile=release examples/search_bench.exe
+```
+
+---
+
+## 📈 Future Ideas
+
+- Remove `Position.board` field (use bitboards only)
 - NNUE evaluation
 - Better time management
-- Endgame tablebases
 - Syzygy tablebase support
 - Enhanced parallel search scaling
 
 ---
 
-## 💡 Contributing Guidelines
+## 💡 Contributing
 
 1. **Run tests** before submitting: `dune runtest`
-2. **Follow OCaml style**: Use `ocamlformat` for consistency or `dune fmt`
+2. **Format code**: Use `dune fmt` for consistency
 3. **Add tests** for new features
 4. **Update docs** when adding techniques
 5. **Benchmark** performance-critical changes
 
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for more details.
+
 ---
 
-## 📚 Learning Resources
+## 📚 Documentation
 
-### Chess Programming
+**New to chess programming?** Start with the **[Chess Programming Concepts Guide](chess-programming-guide.md)**
+
+This comprehensive guide explains all the techniques used in ChessML, with detailed explanations of why they matter and how to implement them.
+
+### External Resources
+
+**Chess Programming:**
 
 - [Chess Programming Wiki](https://www.chessprogramming.org/)
-- [Stockfish](https://github.com/official-stockfish/Stockfish) - Reference implementation
+- [Stockfish](https://github.com/official-stockfish/Stockfish) - World's strongest open-source engine
 - [Ethereal](https://github.com/AndyGrant/Ethereal) - Clean modern engine
 
-### OCaml
+**OCaml:**
 
 - [Real World OCaml](https://dev.realworldocaml.org/)
 - [OCaml Manual](https://ocaml.org/manual/)

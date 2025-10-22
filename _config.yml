@@ -1,0 +1,87 @@
+# Jekyll configuration for ChessML Documentation
+title: ChessML Documentation
+description: A comprehensive guide to chess programming concepts and techniques
+url: https://alexanderbrevig.github.io
+baseurl: /chessml
+
+# Theme
+remote_theme: just-the-docs/just-the-docs
+
+# Color scheme
+color_scheme: light
+
+# Logo
+logo: "/assets/images/logo.png"
+
+# Search
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 10
+  tokenizer_separator: /[\s/]+/
+  rel_url: true
+  button: false
+
+# Aux links
+aux_links:
+  "ChessML on GitHub":
+    - "//github.com/AlexanderBrevig/ChessML"
+
+# Footer
+footer_content: 'Copyright &copy; 2025 Alexander Brevig. Licensed under the MIT License.'
+
+# Back to top link
+back_to_top: true
+back_to_top_text: "Back to top"
+
+# Heading anchors
+heading_anchors: true
+
+# Collections
+collections:
+  docs:
+    permalink: "/:collection/:path/"
+    output: true
+
+# Default settings
+defaults:
+  - scope:
+      path: "docs"
+      type: "pages"
+    values:
+      layout: "default"
+  - scope:
+      path: ""
+      type: "docs"
+    values:
+      layout: "default"
+
+# Kramdown settings
+kramdown:
+  syntax_highlighter_opts:
+    block:
+      line_numbers: false
+
+# Plugins
+plugins:
+  - jekyll-seo-tag
+
+# Exclude from processing
+exclude:
+  - node_modules/
+  - vendor/
+  - _build/
+  - bin/
+  - lib/
+  - test/
+  - examples/
+  - scripts/
+  - openings/
+  - "*.opam"
+  - dune-project
+  - Justfile
+  - "*.pgn"
+  - "*.txt"
+  - CONTRIBUTING.md
