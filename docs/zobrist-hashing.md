@@ -71,6 +71,7 @@ let en_passant_keys = Array.init 8 (fun _ -> Random.int64 Int64.max_int)
 ```
 
 {: .important }
+
 > **Important:** Use a **fixed seed** so the random numbers are the same every time the program runs. This ensures positions hash consistently across sessions.
 
 ## Computing Initial Hash
@@ -352,6 +353,7 @@ end
 ## Common Pitfalls
 
 {: .warning }
+
 > **Common Pitfall:** Not using a fixed seed leads to different hashes each run!
 
 ### 1. Not Using Fixed Seed

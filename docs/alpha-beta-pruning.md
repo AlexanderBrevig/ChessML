@@ -146,6 +146,7 @@ This works because what's good for you (positive score) is bad for your opponent
 ## Move Ordering: The Secret Sauce
 
 {: .highlight }
+
 > **Performance Tip:** Good move ordering can effectively double your search depth!
 
 Alpha-beta's effectiveness depends heavily on **[move ordering](move-ordering.md)**. The algorithm works best when you search the best moves first.
@@ -189,6 +190,7 @@ This saves time because zero-window searches are very fast and often confirm you
 ## Common Pitfalls
 
 {: .warning }
+
 > **Common Pitfall:** Forgetting to use `max` when updating alpha loses information!
 
 ### 1. Incorrect Window Updates

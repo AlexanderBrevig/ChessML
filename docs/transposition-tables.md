@@ -156,6 +156,7 @@ match TranspositionTable.lookup tt pos_hash with
 ### The Move Hint
 
 {: .important }
+
 > Even when you can't use the cached score, always try the hash move first—it's the most effective move ordering heuristic!
 
 Even when you can't use the cached score, the `best_move` is extremely valuable! Try it first—it's very likely to cause a beta cutoff, improving [alpha-beta pruning](alpha-beta-pruning.md) efficiency. This is the most important component of [move ordering](move-ordering.md).
@@ -274,6 +275,7 @@ Or use lock-free atomic operations for even better performance.
 ## Common Pitfalls
 
 {: .warning }
+
 > **Common Pitfall:** Using `>` instead of `>=` for depth comparison—entries at equal depth are valid!
 
 ### 1. Wrong Depth Comparison

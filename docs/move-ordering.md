@@ -20,6 +20,7 @@ Move ordering is the art of sorting moves before searching them, trying the most
 Alpha-beta pruning works best when you search good moves first:
 
 {: .highlight }
+
 > **Performance Tip:** Good move ordering can reduce nodes by 20x at depth 6!
 
 **Perfect ordering:** Search ~2√N positions instead of N (exponential savings!)
@@ -209,6 +210,7 @@ let record_failure history move depth =
 ```
 
 {: .important }
+
 > Cap history scores to prevent overflow and allow the engine to adapt to new positions!
 
 **Important:** Cap history scores to prevent overflow and allow adaptation:

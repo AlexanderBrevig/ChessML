@@ -18,6 +18,7 @@ Quiescence search extends your main [alpha-beta search](alpha-beta-pruning.md) t
 ## The Horizon Effect Problem
 
 {: .warning }
+
 > **Common Pitfall:** Without quiescence search, your engine will miss tactics just beyond its search depth and make catastrophic blunders!
 
 Without quiescence, this happens:
@@ -67,6 +68,7 @@ and quiescence pos alpha beta =
 ## Stand-Pat Evaluation
 
 {: .note }
+
 > The stand-pat score represents choosing to "do nothing"—you can always decline to make a capture.
 
 The key insight: **You can always choose to do nothing** (pass). The "do nothing" score is the static evaluation:

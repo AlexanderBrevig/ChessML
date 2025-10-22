@@ -18,6 +18,7 @@ For example, to represent all white pawns on the board, you use one bitboard whe
 ## Why Use Bitboards?
 
 {: .highlight }
+
 > **Performance Tip:** Bitboards let you check all 64 squares in a single CPU instruction!
 
 **Speed.** Bitboards let you operate on all 64 squares simultaneously using a single CPU instruction. Instead of looping through squares one by one, you can:
