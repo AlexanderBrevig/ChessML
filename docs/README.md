@@ -82,7 +82,48 @@ just test-protocols           # Run protocol tests
 
 For detailed explanations of these concepts, see the [Chess Programming Concepts Guide](chess-programming-guide.md).
 
-- **Bitboards**: 64-bit integers where each bit represents a square (see `lib/core/bitboard.ml`)
+### Hybrid Board Representation
+
+ChessML uses **both** a board array and bitboards for optimal performance:
+
+**Board Array (`piece option array`)** - O(1) "What piece is on square X?"
+
+- Used in: move making, castling logic, capture detection, PGN parsing
+- Example: `piece_at pos Square.e4` → instant lookup
+
+**12 Piece-Type Bitboards** - O(1) "Where are all pieces of type X?"
+
+- Used in: material counting, move generation, attack detection
+- Example: `get_pieces pos White Knight` → all white knight positions
+
+**Why both?**
+
+Without board array (bitboards only):
+
+```ocaml
+(* Finding what's on e4 requires 12 bitboard checks *)
+let piece_at sq =
+  if contains white_pawns sq then Some WhitePawn
+  else if contains white_knights sq then Some WhiteKnight
+  else (* ...10 more checks... *)
+```
+
+Without bitboards (array only):
+
+```ocaml
+(* Material counting requires 64 array lookups *)
+let count_material () =
+  for sq = 0 to 63 do
+    match board.(sq) with
+    | Some piece -> total := !total + value piece
+    | None -> ()
+  done
+```
+
+**The hybrid approach** gives O(1) performance for both access patterns at the cost of ~2KB memory and keeping them synchronized during move making. This is standard in modern engines (Stockfish, Leela, etc.).
+
+### Other Core Concepts
+
 - **Move Encoding**: 16-bit packed representation (see `lib/core/move.ml`)
 - **Zobrist Hashing**: Incremental position hashing via XOR (see `lib/engine/zobrist.ml`)
 - **Polyglot Books**: Binary format for opening books (see `lib/engine/polyglot.ml` and `examples/polyglot_demo.ml`)
