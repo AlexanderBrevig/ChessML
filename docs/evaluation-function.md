@@ -29,28 +29,32 @@ The evaluation function is the "eyes" of your engine. When search reaches leaf n
 
 ### 1. Material Count
 
-The foundation—count piece values:
+The foundation—count piece values using bitboard operations:
 
 ```ocaml
-let piece_values = [
-  (Pawn, 100);
-  (Knight, 300);
-  (Bishop, 325);  (* Slightly better than knight *)
-  (Rook, 500);
-  (Queen, 900);
-  (King, 0);  (* Can't be captured *)
-]
-
+(* Count material using bitboard population count *)
 let count_material pos color =
-  let total = ref 0 in
-  List.iter (fun (kind, value) ->
-    let count = popcount (Position.get_pieces pos color kind) in
-    total := !total + (count * value)
-  ) piece_values;
-  !total
+  let pawns = Position.get_pieces pos color Pawn in
+  let knights = Position.get_pieces pos color Knight in
+  let bishops = Position.get_pieces pos color Bishop in
+  let rooks = Position.get_pieces pos color Rook in
+  let queens = Position.get_pieces pos color Queen in
+  (Bitboard.population pawns * 100) (* times by the centipawn valuation of the piece *)
+  + (Bitboard.population knights * 320)
+  + (Bitboard.population bishops * 330)
+  + (Bitboard.population rooks * 500)
+  + (Bitboard.population queens * 900)
 ```
 
+**How it works:**
+
+- `Position.get_pieces pos color Pawn` returns a bitboard (64-bit integer) with bits set for each pawn
+- `Bitboard.population` uses hardware `popcount` instruction to count set bits (see [bitboards](bitboards.md))
+- Multiply count by piece value and sum for total material
+
 This gives you the baseline: "I have 2400 centipawns of material, opponent has 2100—I'm ahead by 3 pawns."
+
+**Performance:** Bitboard approach is ~40x faster than iterating over all 64 squares. The `popcount` instruction executes in 1-3 CPU cycles.
 
 ### 2. Piece-Square Tables (PST)
 
