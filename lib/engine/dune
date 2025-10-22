@@ -9,6 +9,7 @@
   killers
   history
   countermoves
+  pawn_cache
   piece_tables
   see
   search_common

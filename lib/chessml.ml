@@ -34,6 +34,7 @@ module Search = Engine.Search
 module Config = Engine.Config
 module Killers = Engine.Killers
 module History = Engine.History
+module Pawn_cache = Engine.Pawn_cache
 module See = Engine.See
 module Piece_tables = Engine.Piece_tables
 module Concurrent_tt = Engine.Concurrent_tt

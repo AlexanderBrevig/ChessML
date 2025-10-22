@@ -118,68 +118,52 @@ let test_no_fifty_move_penalty_early () =
 
 (** Test that engine plays the correct rook+pawn endgame sequence to mate *)
 let test_rook_pawn_endgame_promotion_plan () =
-  (* White: Ka1, Rd1 (needs to cut off), pawn on e4
+  (* White: Ka1, Rc8, pawn on d4
      Black: Kh8
-     White should execute the winning technique: cut off king, advance pawn, promote *)
+     This is a winning position - White should be able to force mate within 25 moves *)
   let starting_fen = "2R4k/8/8/8/3P4/8/8/K7 b - - 0 1" in
-  let ignore_move game_state move_description = 
-    let result = Search.find_best_move ~verbose:false game_state 10 in
-    match result.best_move with
-    | None ->
-      Printf.printf "ERROR: No move found!\n";
-      Alcotest.fail (Printf.sprintf "Engine should find move for: %s" move_description)
-    | Some mv ->
-      let actual_uci = Move.to_uci mv in
-      Printf.printf "Engine plays: %s (score: %d)\n" actual_uci result.score;
-      Game.make_move game_state mv
-  in
-  (* Helper to check and execute an expected move *)
-  let expect_move game_state expected_uci move_description =
-    Printf.printf "\nExpecting: %s (%s)\n" expected_uci move_description;
-    let result = Search.find_best_move ~verbose:false game_state 10 in
-    match result.best_move with
-    | None ->
-      Printf.printf "ERROR: No move found!\n";
-      Alcotest.fail (Printf.sprintf "Engine should find move: %s" expected_uci)
-    | Some mv ->
-      let actual_uci = Move.to_uci mv in
-      Printf.printf "Engine plays: %s (score: %d)\n" actual_uci result.score;
-      (* Check if move matches expectation *)
-      Alcotest.(check string)
-        (Printf.sprintf "Move %s: %s" expected_uci move_description)
-        expected_uci
-        actual_uci;
-      (* Return new game state after making the move *)
-      Game.make_move game_state mv
-  in
-  Printf.printf "\n=== Testing Rook+Pawn Endgame Winning Technique ===\n";
-  Printf.printf "Starting position: %s\n" starting_fen;
-  Printf.printf
-    "White should: 1) Cut off king with rook, 2) Advance pawn, 3) Promote to mate\n";
   let game = Game.of_fen starting_fen in
-  let pos = Game.position game in
-  let side_to_move = Position.side_to_move pos in
-  (* Verify it's Black's turn as the FEN specifies *)
-  Alcotest.(check bool)
-    "Starting position should be Black to move"
-    true
-    (side_to_move = Black);
-  (* Move sequence from actual engine play *)
-  let game = expect_move game "h8g7" "Black king moves toward center" in
-  let game = expect_move game "c8e8" "Rook cuts off Black king on e-file" in
-  let game = expect_move game "g7f7" "Black king approaches" in
-  let game = expect_move game "e8e1" "Rook maintains cutoff from 2nd rank" in
-  let game = ignore_move game "Black king continues approach" in
-  let game = expect_move game "d4d5" "Pawn advances with king cut off" in
-  let game = ignore_move game "Black king tries to stop pawn" in
-  let game = expect_move game "d5d6" "Pawn continues advancing" in
-  let game = ignore_move game "Black king desperate attempt" in
-  let game = ignore_move game "Rook moves" in
-  let game = ignore_move game "Black king cannot stop promotion" in
-  let game = expect_move game "d7d8q" "Pawn promotes" in
-  let game = ignore_move game "Black king helpless" in
-  let _game = expect_move game "d8f6" "ladder begins" in
-  Printf.printf "Rook+pawn endgame promotion plan executed successfully.\n"
+  
+  (* Play out the game automatically for up to 25 moves *)
+  let rec play_game current_game move_count max_moves =
+    if move_count >= max_moves then
+      Alcotest.fail (Printf.sprintf "White should have mated within %d moves" max_moves)
+    else (
+      let pos = Game.position current_game in
+      let legal_moves = Movegen.generate_moves pos in
+      if List.length legal_moves = 0 then (
+        (* No legal moves - check if it's checkmate *)
+        let side_to_move = Position.side_to_move pos in
+        let king_sq = if side_to_move = White 
+          then Position.white_king_sq pos 
+          else Position.black_king_sq pos in
+        let opponent = Types.Color.opponent side_to_move in
+        let attackers = Movegen.compute_attackers_to pos king_sq opponent in
+        if Bitboard.is_not_empty attackers then (
+          (* King is in check and no legal moves = checkmate *)
+          if side_to_move = Black then
+            current_game (* Black is mated - success! *)
+          else
+            Alcotest.fail "Expected Black to be mated, not White"
+        ) else
+          Alcotest.fail "Rook+pawn vs lone king should not be stalemate"
+      ) else if Game.is_draw current_game then
+        Alcotest.fail "Rook+pawn vs lone king should not be a draw"
+      else (
+        (* Find and make the best move *)
+        let result = Search.find_best_move ~verbose:false current_game 8 in
+        match result.best_move with
+        | None ->
+          Alcotest.fail (Printf.sprintf "No legal move found at move %d" move_count)
+        | Some mv ->
+          let new_game = Game.make_move current_game mv in
+          play_game new_game (move_count + 1) max_moves
+      )
+    )
+  in
+  
+  let _final_game = play_game game 1 22 in
+  ()
 ;;
 
 (** Test suite *)

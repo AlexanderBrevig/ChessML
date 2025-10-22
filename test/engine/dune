@@ -27,6 +27,10 @@
  (libraries chessml alcotest))
 
 (test
+ (name test_pawn_cache)
+ (libraries chessml alcotest))
+
+(test
  (name test_see)
  (libraries chessml alcotest))
 
