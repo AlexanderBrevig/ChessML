@@ -137,3 +137,8 @@
  (name polyglot_demo)
  (modules polyglot_demo)
  (libraries chessml unix))
+
+(executable
+ (name test_book_weights)
+ (modules test_book_weights)
+ (libraries chessml))

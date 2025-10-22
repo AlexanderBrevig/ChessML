@@ -25,7 +25,7 @@ echo ""
 # Skill 5 ≈ 1600 Elo  
 # Skill 10 ≈ 1900 Elo
 
-for skill in 0 # 2 # 5 10 14 16 # this is where we are :D
+for skill in 2 # 5 10 14 16 # this is where we are :D
     echo ""
     echo "Playing $GAMES_PER_LEVEL games against Stockfish Skill Level $skill..."
 

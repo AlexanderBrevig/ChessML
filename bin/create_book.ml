@@ -182,13 +182,33 @@ let process_all_files files =
 
 (** Convert statistics to book entries with weights *)
 let create_book_entries () =
+  (* First pass: find max count for normalization context *)
+  let max_count = ref 0 in
+  MoveStats.iter (fun _ count -> max_count := max !max_count count) move_counts;
+  
+  Printf.printf "   • Max game count for any move: %d\n" !max_count;
+  
   let entries = ref [] in
   MoveStats.iter
     (fun (zobrist, move) count ->
        if count >= min_game_count
        then (
-         (* Weight is proportional to frequency, scaled for book format *)
-         let weight = min 65535 (count * 100) in
+         (* Logarithmic scaling to better use the 16-bit range:
+            - Maps counts from [min_game_count, max_count] to [1, 65535]
+            - Uses log scale so differences are preserved even for high counts
+            - Formula: weight = 1 + (65534 * log(count) / log(max_count))
+            
+            Example with max_count = 100,000:
+            - count = 3       -> weight ≈ 5,263   (low frequency)
+            - count = 100     -> weight ≈ 26,314  (moderate)
+            - count = 1,000   -> weight ≈ 39,471  (high)
+            - count = 10,000  -> weight ≈ 52,629  (very high)
+            - count = 100,000 -> weight = 65,535  (maximum)
+         *)
+         let log_count = log (float_of_int count) in
+         let log_max = log (float_of_int !max_count) in
+         let normalized = log_count /. log_max in
+         let weight = 1 + int_of_float (65534.0 *. normalized) in
          entries := (zobrist, move, weight) :: !entries))
     move_counts;
   !entries
