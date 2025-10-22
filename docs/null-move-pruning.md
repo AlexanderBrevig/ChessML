@@ -334,11 +334,11 @@ This catches positions where opponent has strong threats.
 
 ## Null Move vs Other Techniques
 
-| Technique                                          | Elo Gain | Risk                | Complexity |
-| -------------------------------------------------- | -------- | ------------------- | ---------- |
-| Null Move                                          | +100-150 | Zugzwang errors     | Low        |
-| [Late Move Reductions](late-move-reductions.md)   | +100-200 | Missed tactics      | Medium     |
-| Futility Pruning                                   | +30-50   | Tactical oversights | Low        |
+| Technique                                       | Elo Gain | Risk                | Complexity |
+| ----------------------------------------------- | -------- | ------------------- | ---------- |
+| Null Move                                       | +100-150 | Zugzwang errors     | Low        |
+| [Late Move Reductions](late-move-reductions.md) | +100-200 | Missed tactics      | Medium     |
+| Futility Pruning                                | +30-50   | Tactical oversights | Low        |
 
 Null move is high reward, low risk, easy to implement—one of the best Elo-per-line improvements!
 

@@ -5,13 +5,16 @@ url: https://alexanderbrevig.github.io
 baseurl: /chessml
 
 # Theme
-remote_theme: just-the-docs/just-the-docs
+theme: just-the-docs
 
 # Color scheme
 color_scheme: dark
 
 # Logo
-logo: "/assets/images/logo.png"
+# logo: "/assets/images/logo.png"
+
+# Enable navigation
+nav_enabled: true
 
 # Search
 search_enabled: true
@@ -57,8 +60,10 @@ kramdown:
       line_numbers: false
 
 # Plugins
-plugins:
-  - jekyll-seo-tag
+# jekyll-remote-theme
+#  - jekyll-remote-theme
+ # - jekyll-default-layout
+  #- jekyll-seo-tag
 
 # Exclude from processing
 exclude:
