@@ -5,7 +5,7 @@ open Chessml
 let show_move_ordering fen =
   Printf.printf "\n=== Move Ordering Demo ===\n";
   Printf.printf "FEN: %s\n\n" fen;
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let pos = Game.position game in
   let moves = Movegen.generate_moves pos in
   Printf.printf "Unordered moves (%d total):\n" (List.length moves);

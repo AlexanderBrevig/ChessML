@@ -180,7 +180,7 @@ let test_promotion_parsing_from_uci () =
 let test_promotion_in_search () =
   (* Test that search can find promotion moves *)
   let fen = "8/P7/8/8/8/8/8/7k w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   (* Search should find the promotion *)
   let result = Search.find_best_move ~verbose:false ~max_time_ms:1000 game 3 in
   match result.Search.best_move with

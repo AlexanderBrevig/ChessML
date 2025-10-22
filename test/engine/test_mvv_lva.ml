@@ -19,12 +19,12 @@ let test_mvv_lva_basic_scoring () =
 let test_mvv_lva_capture_ordering () =
   (* Position where we can test different captures *)
   let game =
-    Game.from_fen "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 4"
+    Game.of_fen "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 4"
   in
   let _pos = Game.position game in
   (* Let's test the scoring directly with a position designed for captures *)
   let pos_with_target =
-    Game.from_fen "r1bqk1nr/pppp1ppp/2n5/2b1b3/1P2P3/3P1N2/P1P2PPP/RNBQK2R w KQkq - 4 4"
+    Game.of_fen "r1bqk1nr/pppp1ppp/2n5/2b1b3/1P2P3/3P1N2/P1P2PPP/RNBQK2R w KQkq - 4 4"
   in
   let pos_target = Game.position pos_with_target in
   (* Pawn captures bishop on c5 *)
@@ -59,7 +59,7 @@ let test_mvv_lva_capture_ordering () =
 let test_mvv_lva_score_calculation () =
   (* Test the MVV-LVA calculation formula directly *)
   let game =
-    Game.from_fen "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 5 4"
+    Game.of_fen "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 5 4"
   in
   let pos = Game.position game in
   (* Test non-capture move - score_move returns higher for better moves, quiet moves get base score *)
@@ -76,7 +76,7 @@ let test_mvv_lva_score_calculation () =
   Alcotest.(check bool) "Quiet move has low score" true (quiet_score < 1000000);
   (* Test capture: pawn takes pawn (equal trade) *)
   let pawn_pos =
-    Game.from_fen "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2"
+    Game.of_fen "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2"
   in
   let pos_pawn = Game.position pawn_pos in
   let pawn_capture = Move.make (Square.of_uci "e4") (Square.of_uci "d5") Move.Capture in
@@ -99,7 +99,7 @@ let test_mvv_lva_score_calculation () =
 let test_move_ordering_with_captures () =
   (* Test that captures are ordered correctly using MVV-LVA *)
   let game =
-    Game.from_fen "r1bqk2r/pppp1ppp/2n2n2/2b1p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 5 5"
+    Game.of_fen "r1bqk2r/pppp1ppp/2n2n2/2b1p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 5 5"
   in
   let pos = Game.position game in
   (* Generate all legal moves *)
@@ -161,7 +161,7 @@ let test_mvv_lva_victim_priority () =
 let test_mvv_lva_integration_with_search () =
   (* Test that MVV-LVA improves tactical search *)
   let tactical_pos =
-    Game.from_fen "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 4"
+    Game.of_fen "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 4"
   in
   (* Search should find the best moves efficiently *)
   let result = Search.find_best_move ~verbose:false tactical_pos 3 in
@@ -174,7 +174,7 @@ let test_mvv_lva_integration_with_search () =
 let test_mvv_lva_special_captures () =
   (* Test en passant capture (victim is pawn, but not on target square) *)
   let en_passant_pos =
-    Game.from_fen "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3"
+    Game.of_fen "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3"
   in
   let pos_ep = Game.position en_passant_pos in
   (* En passant capture move *)
@@ -194,7 +194,7 @@ let test_mvv_lva_special_captures () =
   Alcotest.(check bool) "En passant has positive score" true (ep_score >= 7000);
   (* Test promotion with capture *)
   let promotion_pos =
-    Game.from_fen "rnbqkbn1/pppppppP/8/8/8/8/PPPPPP1P/RNBQKBNR w KQq - 0 1"
+    Game.of_fen "rnbqkbn1/pppppppP/8/8/8/8/PPPPPP1P/RNBQKBNR w KQq - 0 1"
   in
   let pos_promo = Game.position promotion_pos in
   let promo_capture =
@@ -217,7 +217,7 @@ let test_mvv_lva_defensive_considerations () =
   (* While MVV-LVA doesn't consider if pieces are defended, 
      test that it at least orders captures sensibly *)
   let complex_pos =
-    Game.from_fen "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 5 4"
+    Game.of_fen "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 5 4"
   in
   let pos = Game.position complex_pos in
   (* Get all moves and filter captures *)

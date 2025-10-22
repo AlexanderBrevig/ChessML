@@ -40,38 +40,38 @@ let test_draw_starting_position () =
 
 let test_draw_insufficient_material () =
   (* K vs K *)
-  let game = Game.from_fen "8/8/8/4k3/8/8/4K3/8 w - - 0 1" in
+  let game = Game.of_fen "8/8/8/4k3/8/8/4K3/8 w - - 0 1" in
   Alcotest.(check bool) "K vs K is a draw" true (Game.is_draw game);
   (* KN vs K *)
-  let game = Game.from_fen "8/8/8/4k3/8/8/4KN2/8 w - - 0 1" in
+  let game = Game.of_fen "8/8/8/4k3/8/8/4KN2/8 w - - 0 1" in
   Alcotest.(check bool) "KN vs K is a draw" true (Game.is_draw game);
   (* KB vs K *)
-  let game = Game.from_fen "8/8/8/4k3/8/8/4KB2/8 w - - 0 1" in
+  let game = Game.of_fen "8/8/8/4k3/8/8/4KB2/8 w - - 0 1" in
   Alcotest.(check bool) "KB vs K is a draw" true (Game.is_draw game)
 ;;
 
 let test_draw_fifty_move_rule () =
   (* Fifty-move rule: halfmove clock >= 100 (50 moves = 100 half-moves) *)
-  let game = Game.from_fen "8/8/8/4k3/8/8/4K3/8 w - - 100 1" in
+  let game = Game.of_fen "8/8/8/4k3/8/8/4K3/8 w - - 100 1" in
   Alcotest.(check bool) "Fifty-move rule at 100" true (Game.is_draw game)
 ;;
 
 let test_draw_stalemate () =
   (* Classic stalemate: King on a8, white king on c8, white queen on d7, black to move *)
-  let game = Game.from_fen "k1K5/3Q4/8/8/8/8/8/8 b - - 0 1" in
+  let game = Game.of_fen "k1K5/3Q4/8/8/8/8/8/8 b - - 0 1" in
   Alcotest.(check bool) "Stalemate is a draw" true (Game.is_draw game)
 ;;
 
 let test_not_draw_checkmate () =
   (* Checkmate position *)
-  let game = Game.from_fen "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1" in
+  let game = Game.of_fen "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1" in
   Alcotest.(check bool) "Checkmate is not a draw" false (Game.is_draw game)
 ;;
 
 (* Castling tests *)
 let test_castling_fen_loading () =
   (* Test that FEN positions with castling rights load correctly *)
-  let game = Game.from_fen "r3k2r/1pp3p1/8/p4p2/5q2/4p1pP/PPP1P1R1/RQ2KB2 b kq - 1 29" in
+  let game = Game.of_fen "r3k2r/1pp3p1/8/p4p2/5q2/4p1pP/PPP1P1R1/RQ2KB2 b kq - 1 29" in
   let pos = Game.position game in
   let fen_output = Position.to_fen pos in
   (* Check that position loaded correctly *)
@@ -133,7 +133,7 @@ let test_castling_move_creation () =
 
 let test_castling_turn_switching () =
   (* Test that castling properly switches turns *)
-  let game = Game.from_fen "r3k2r/1pp3p1/8/p4p2/5q2/4p1pP/PPP1P1R1/RQ2KB2 b kq - 1 29" in
+  let game = Game.of_fen "r3k2r/1pp3p1/8/p4p2/5q2/4p1pP/PPP1P1R1/RQ2KB2 b kq - 1 29" in
   let pos_before = Game.position game in
   (* Verify black to move initially *)
   Alcotest.(check bool)
@@ -158,7 +158,7 @@ let test_castling_turn_switching () =
 
 let test_castling_piece_positions () =
   (* Test that castling moves pieces correctly *)
-  let game = Game.from_fen "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1" in
+  let game = Game.of_fen "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1" in
   (* White kingside castling *)
   let wk_castle =
     Chessml.Move.make
@@ -193,7 +193,7 @@ let test_castling_piece_positions () =
 
 let test_castling_move_counter () =
   (* Test that move counters update correctly after castling *)
-  let game = Game.from_fen "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1" in
+  let game = Game.of_fen "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1" in
   let pos_before = Game.position game in
   let castling_move =
     Chessml.Move.make

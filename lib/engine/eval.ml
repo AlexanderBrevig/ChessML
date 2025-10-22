@@ -36,7 +36,11 @@ let evaluate_pawn_structure = Eval_pawn_structure.evaluate_pawn_structure
 let is_square_attacked = Eval_pieces.is_square_attacked
 let is_piece_hanging = Eval_pieces.is_piece_hanging
 let is_piece_en_prise pos sq = Eval_pieces.is_piece_en_prise pos sq piece_kind_value
-let evaluate_piece_threats pos sq = Eval_pieces.evaluate_piece_threats pos sq piece_kind_value
+
+let evaluate_piece_threats pos sq =
+  Eval_pieces.evaluate_piece_threats pos sq piece_kind_value
+;;
+
 let evaluate_bishop_pair = Eval_pieces.evaluate_bishop_pair
 let evaluate_piece_safety = Eval_pieces.evaluate_piece_safety
 let evaluate_development = Eval_pieces.evaluate_development
@@ -50,7 +54,6 @@ let evaluate_fifty_move_incentive = Eval_endgame.evaluate_fifty_move_incentive
 let evaluate ?(history = []) (pos : Position.t) : int =
   let side = Position.side_to_move pos in
   let opponent = Color.opponent side in
-  
   (* Helper: sum positional values for a piece type bitboard *)
   let sum_position_values pieces kind color =
     let piece = { Types.color; kind } in
@@ -58,7 +61,6 @@ let evaluate ?(history = []) (pos : Position.t) : int =
     Bitboard.iter (fun sq -> total := !total + piece_square_value piece sq) pieces;
     !total
   in
-  
   (* Count pieces (non-pawns, non-kings) for trade incentive *)
   let count_pieces color =
     Bitboard.population (Position.get_pieces pos color Knight)
@@ -66,11 +68,9 @@ let evaluate ?(history = []) (pos : Position.t) : int =
     + Bitboard.population (Position.get_pieces pos color Rook)
     + Bitboard.population (Position.get_pieces pos color Queen)
   in
-  
   (* Material using optimized count_material from eval_helpers *)
   let our_material = count_material pos side in
   let their_material = count_material pos opponent in
-  
   (* Positional bonuses - process each piece type's bitboard *)
   let our_position =
     sum_position_values (Position.get_pieces pos side Pawn) Pawn side
@@ -88,21 +88,17 @@ let evaluate ?(history = []) (pos : Position.t) : int =
     + sum_position_values (Position.get_pieces pos opponent Queen) Queen opponent
     + sum_position_values (Position.get_pieces pos opponent King) King opponent
   in
-  
   let our_pieces_count = count_pieces side in
   let their_pieces_count = count_pieces opponent in
-  
   let material_diff = our_material - their_material in
   let position_diff = our_position - their_position in
   let total_material = our_material + their_material in
-  
   (* Evaluate pawn structure *)
   let pawn_structure_bonus =
     let our_pawn_eval = evaluate_pawn_structure pos side in
     let their_pawn_eval = evaluate_pawn_structure pos opponent in
     our_pawn_eval - their_pawn_eval
   in
-  
   (* Trade incentive - use already collected piece counts *)
   let trade_incentive =
     if abs material_diff > 200
@@ -117,55 +113,48 @@ let evaluate ?(history = []) (pos : Position.t) : int =
         total_pieces * 5)
     else 0
   in
-  
   (* King safety and castling evaluation *)
   let king_safety_bonus =
     let our_bonus = Eval_king_safety.evaluate_king_safety pos side total_material in
-    let their_penalty = Eval_king_safety.evaluate_king_safety pos opponent total_material in
+    let their_penalty =
+      Eval_king_safety.evaluate_king_safety pos opponent total_material
+    in
     our_bonus - their_penalty
   in
-  
   (* Development evaluation - encourage proper opening play *)
   let development_bonus =
     let our_dev = evaluate_development pos side in
     let their_dev = evaluate_development pos opponent in
     our_dev - their_dev
   in
-  
   (* Bishop pair bonus *)
   let bishop_pair_bonus =
     let our_bishops = evaluate_bishop_pair pos side in
     let their_bishops = evaluate_bishop_pair pos opponent in
     our_bishops - their_bishops
   in
-  
   (* Piece safety - penalize hanging/threatened pieces *)
   let safety_bonus =
     let our_safety = evaluate_piece_safety pos side in
     let their_safety = evaluate_piece_safety pos opponent in
     our_safety - their_safety
   in
-  
   (* Repetition incentive - avoid when winning, seek when losing *)
   let repetition_incentive = evaluate_repetition_incentive pos history material_diff in
-  
   (* 50-move rule incentive - avoid draws when winning *)
   let fifty_move_incentive = evaluate_fifty_move_incentive pos material_diff in
-  
   (* Rook endgame evaluation - king cutoff and rook positioning *)
   let rook_endgame_bonus =
     let our_bonus = Eval_endgame.evaluate_rook_endgame pos side is_passed_pawn in
     let their_bonus = Eval_endgame.evaluate_rook_endgame pos opponent is_passed_pawn in
     our_bonus - their_bonus
   in
-  
   (* Ladder mate evaluation - coordinate major pieces to push king to edge *)
   let ladder_mate_bonus =
     let our_bonus = Eval_endgame.evaluate_ladder_mate pos side piece_kind_value in
     let their_bonus = Eval_endgame.evaluate_ladder_mate pos opponent piece_kind_value in
     our_bonus - their_bonus
   in
-  
   (* Return score from side-to-move perspective *)
   material_diff
   + position_diff

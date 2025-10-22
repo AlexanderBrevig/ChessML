@@ -6,7 +6,7 @@ let test_position_with_lmr pos_name fen depth =
   Printf.printf "\n=== Testing %s ===\n" pos_name;
   Printf.printf "Position: %s\n" fen;
   Printf.printf "Search depth: %d\n\n" depth;
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let start = Unix.gettimeofday () in
   let result = Search.find_best_move game depth in
   let elapsed = Unix.gettimeofday () -. start in

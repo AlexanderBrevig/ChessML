@@ -635,11 +635,13 @@ let draw_board pos =
   for rank = 7 downto 0 do
     Printf.printf "%d |" (rank + 1);
     for file = 0 to 7 do
-      let sq = rank * 8 + file in
-      let piece_char = match piece_at pos sq with
+      let sq = (rank * 8) + file in
+      let piece_char =
+        match piece_at pos sq with
         | None -> " "
         | Some p ->
-          let c = match p.kind with
+          let c =
+            match p.kind with
             | Pawn -> "P"
             | Knight -> "N"
             | Bishop -> "B"

@@ -6,7 +6,7 @@ let test_quiescence_position name fen depth =
   Printf.printf "\n=== %s ===\n" name;
   Printf.printf "FEN: %s\n" fen;
   Printf.printf "Testing quiescence search vs static eval at depth %d\n" depth;
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let pos = Game.position game in
   (* Get static evaluation *)
   let static_eval = Eval.evaluate pos in

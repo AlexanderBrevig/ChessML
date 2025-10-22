@@ -4,7 +4,7 @@ open Alcotest
 (** Test helpers *)
 
 let see_test name fen move expected_score () =
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let pos = Game.position game in
   let score = See.evaluate pos move in
   check int name expected_score score
@@ -24,7 +24,7 @@ let simple_capture_wins () =
     "White pawn takes undefended pawn"
     "8/8/8/4p3/3P4/8/8/8 w - - 0 1"
     (make_move "d4" "e5")
-    125  (* Includes positional bonus for pawn moving to e5 *)
+    125 (* Includes positional bonus for pawn moving to e5 *)
     ()
 ;;
 
@@ -34,7 +34,7 @@ let simple_capture_equal () =
     "White pawn takes pawn defended by pawn"
     "8/8/5p2/4p3/3P4/8/8/8 w - - 0 1"
     (make_move "d4" "e5")
-    5  (* Small positional difference *)
+    5 (* Small positional difference *)
     ()
 ;;
 
@@ -44,7 +44,7 @@ let simple_capture_loses () =
     "Knight takes pawn defended by pawn (bad)"
     "8/8/5p2/4p3/8/3N4/8/8 w - - 0 1"
     (make_move "d3" "e5")
-    (-215)  (* Knight loss with positional adjustments *)
+    (-215) (* Knight loss with positional adjustments *)
     ()
 ;;
 

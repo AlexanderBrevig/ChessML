@@ -135,17 +135,11 @@ let test_parse_game () =
   let games = Pgn_parser.parse_file test_pgn in
   Alcotest.(check int) "One game parsed" 1 (List.length games);
   let game = List.hd games in
-  Alcotest.(check (option string))
-    "Event header"
-    (Some "Test Game")
-    game.Pgn_parser.event;
+  Alcotest.(check (option string)) "Event header" (Some "Test Game") game.Pgn_parser.event;
   Alcotest.(check (option string)) "White header" (Some "Player1") game.white;
   Alcotest.(check (option string)) "Black header" (Some "Player2") game.black;
   let moves = Pgn_parser.game_to_moves game in
-  Alcotest.(check bool)
-    "At least 2 moves converted"
-    true
-    (List.length moves >= 2);
+  Alcotest.(check bool) "At least 2 moves converted" true (List.length moves >= 2);
   (match moves with
    | first_move :: second_move :: _ ->
      Alcotest.(check square_testable)
@@ -184,10 +178,7 @@ let test_parse_multiple_games () =
   let games = Pgn_parser.parse_file test_pgn in
   Alcotest.(check int) "Two games parsed" 2 (List.length games);
   let game1 = List.nth games 0 in
-  Alcotest.(check (option string))
-    "Game 1 event"
-    (Some "Game 1")
-    game1.Pgn_parser.event;
+  Alcotest.(check (option string)) "Game 1 event" (Some "Game 1") game1.Pgn_parser.event;
   let game2 = List.nth games 1 in
   Alcotest.(check (option string)) "Game 2 event" (Some "Game 2") game2.event;
   Sys.remove test_pgn

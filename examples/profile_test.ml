@@ -7,7 +7,7 @@ let () =
   flush stdout;
   (* Italian Game position - good mix of move generation and search *)
   let fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Printf.printf "Testing position: %s\n" fen;
   Printf.printf "Running search at depth 6...\n";
   flush stdout;

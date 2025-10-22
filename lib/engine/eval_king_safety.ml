@@ -15,12 +15,7 @@ let is_square_empty pos sq = not (Bitboard.contains (Position.occupied pos) sq)
 
 (** Evaluate king safety and castling for a given color
     Returns bonus/penalty in centipawns *)
-let evaluate_king_safety 
-      (pos : Position.t) 
-      (color : color)
-      (total_material : int)
-  : int 
-  =
+let evaluate_king_safety (pos : Position.t) (color : color) (total_material : int) : int =
   let castling_rights = Position.castling_rights pos in
   let our_rights = castling_rights.(if color = White then 0 else 1) in
   (* Use cached king positions instead of searching *)

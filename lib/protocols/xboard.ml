@@ -229,7 +229,9 @@ let main_loop () =
                  flush stdout)
                else (
                  let search_time_ms = calculate_search_time_ms !my_time in
-                 let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
+                 let max_depth =
+                   if !my_time < 100 then 3 else Config.get_max_search_depth ()
+                 in
                  Printf.fprintf
                    log
                    "Starting search at depth %d with %dms time limit...\n"
@@ -319,7 +321,9 @@ let main_loop () =
                flush stdout)
              else (
                let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
+               let max_depth =
+                 if !my_time < 100 then 3 else Config.get_max_search_depth ()
+               in
                let result =
                  Search.find_best_move
                    ~verbose:false
@@ -368,7 +372,9 @@ let main_loop () =
                flush stdout)
              else (
                let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
+               let max_depth =
+                 if !my_time < 100 then 3 else Config.get_max_search_depth ()
+               in
                let result =
                  Search.find_best_move
                    ~verbose:false
@@ -419,7 +425,9 @@ let main_loop () =
                flush stdout)
              else (
                let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
+               let max_depth =
+                 if !my_time < 100 then 3 else Config.get_max_search_depth ()
+               in
                let result =
                  Search.find_best_move
                    ~verbose:false
@@ -457,13 +465,13 @@ let main_loop () =
         (try
            Printf.fprintf
              log
-             "Before Game.from_fen: current position = %s\n"
+             "Before Game.of_fen: current position = %s\n"
              (Position.to_fen (Game.position !game));
            flush log;
-           let new_game = Game.from_fen fen in
+           let new_game = Game.of_fen fen in
            Printf.fprintf
              log
-             "Game.from_fen created new game with position: %s\n"
+             "Game.of_fen created new game with position: %s\n"
              (Position.to_fen (Game.position new_game));
            flush log;
            game := new_game;

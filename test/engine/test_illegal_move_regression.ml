@@ -17,7 +17,7 @@ let test_position_after_rxg2_check () =
   (* Verify we have legal moves *)
   assert (List.length legal_moves > 0);
   (* Test that engine suggests a legal move *)
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let result = Search.find_best_move ~verbose:false game 4 in
   match result.best_move with
   | None ->

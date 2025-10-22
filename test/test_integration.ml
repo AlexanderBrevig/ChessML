@@ -63,68 +63,68 @@ let test_draw_starting_position () =
 
 let test_draw_insufficient_material_k_vs_k () =
   let fen = "8/8/8/4k3/8/8/4K3/8 w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "King vs King is a draw" true (Game.is_draw game)
 ;;
 
 let test_draw_insufficient_material_kn_vs_k () =
   let fen = "8/8/8/4k3/8/8/4KN2/8 w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "King+Knight vs King is a draw" true (Game.is_draw game)
 ;;
 
 let test_draw_insufficient_material_kb_vs_k () =
   let fen = "8/8/8/4k3/8/8/4KB2/8 w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "King+Bishop vs King is a draw" true (Game.is_draw game)
 ;;
 
 let test_draw_insufficient_material_k_vs_kn () =
   let fen = "8/8/8/4kn2/8/8/4K3/8 w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "King vs King+Knight is a draw" true (Game.is_draw game)
 ;;
 
 let test_draw_insufficient_material_kb_vs_kb () =
   let fen = "8/8/8/4kb2/8/8/4KB2/8 w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "King+Bishop vs King+Bishop is a draw" true (Game.is_draw game)
 ;;
 
 let test_draw_sufficient_material_with_pawn () =
   let fen = "8/8/8/4k3/8/8/4KP2/8 w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "King+Pawn vs King is not a draw" false (Game.is_draw game)
 ;;
 
 let test_draw_sufficient_material_with_rook () =
   let fen = "8/8/8/4k3/8/8/4KR2/8 w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "King+Rook vs King is not a draw" false (Game.is_draw game)
 ;;
 
 let test_draw_fifty_move_rule () =
   let fen = "8/8/8/4k3/8/8/4K3/8 w - - 100 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "Fifty-move rule triggers draw" true (Game.is_draw game)
 ;;
 
 let test_draw_not_fifty_move_rule () =
   let fen = "8/8/8/4k3/8/8/4KP2/8 w - - 99 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "49.5 moves is not a draw" false (Game.is_draw game)
 ;;
 
 let test_draw_stalemate () =
   (* Classic stalemate: King on a8, white king on c8, white queen on d7, black to move *)
   let fen = "k1K5/3Q4/8/8/8/8/8/8 b - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "Stalemate is a draw" true (Game.is_draw game)
 ;;
 
 let test_not_draw_checkmate () =
   let fen = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Alcotest.(check bool) "Checkmate is not a draw" false (Game.is_draw game)
 ;;
 

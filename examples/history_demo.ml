@@ -20,7 +20,7 @@ let () =
     "Moves that cause beta cutoffs get higher scores (weighted by depth²).\n\n";
   (* Create a tactical position *)
   let game =
-    Game.from_fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1"
+    Game.of_fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1"
   in
   Printf.printf "Position: Italian Game opening\n\n";
   (* First search - fresh history table *)
@@ -51,7 +51,7 @@ let () =
   (* Try a different position to show history persists *)
   Printf.printf "=== Different position (Ruy Lopez) ===\n\n";
   let game2 =
-    Game.from_fen "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 1"
+    Game.of_fen "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 1"
   in
   Printf.printf "Search (depth 4, history persists across positions):\n";
   let result4 = Search.find_best_move ~verbose:false game2 4 in

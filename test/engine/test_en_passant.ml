@@ -121,7 +121,7 @@ let test_en_passant_left_and_right () =
 let test_en_passant_in_search () =
   (* Test that search can find en passant moves *)
   let fen = "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let result = Search.find_best_move ~verbose:false ~max_time_ms:1000 game 3 in
   match result.Search.best_move with
   | Some mv ->

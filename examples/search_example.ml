@@ -6,7 +6,7 @@ let test_position name fen depth =
   Printf.printf "\n=== %s ===\n" name;
   Printf.printf "FEN: %s\n" fen;
   Printf.printf "Searching at depth %d...\n" depth;
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let result = Search.find_best_move game depth in
   match result.Search.best_move with
   | Some mv ->
@@ -50,7 +50,7 @@ let () =
   test_position "Tactical Win" fen 5;
   (* Let's also verify the moves are what we expect *)
   Printf.printf "\nDetailed analysis:\n";
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let pos = Game.position game in
   let moves = Movegen.generate_moves pos in
   (* Check if Qh5+ is available *)

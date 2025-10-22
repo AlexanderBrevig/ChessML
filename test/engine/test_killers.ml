@@ -127,7 +127,7 @@ let test_global_killer_operations () =
 let test_search_with_killers_performance () =
   (* Test a position where killers should help reduce nodes *)
   let game =
-    Game.from_fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"
+    Game.of_fen "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"
   in
   (* Search the same position twice to allow killers to be established *)
   let result1 = Search.find_best_move ~verbose:false game 4 in

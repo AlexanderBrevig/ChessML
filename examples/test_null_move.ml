@@ -9,7 +9,7 @@ let test_null_move_position pos_name fen depth =
   flush stdout;
   Printf.printf "Creating game...\n";
   flush stdout;
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   Printf.printf "Starting search...\n";
   flush stdout;
   let start = Unix.gettimeofday () in

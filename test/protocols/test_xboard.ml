@@ -18,7 +18,7 @@ let test_move_generation () =
 let test_setboard () =
   (* Test that we can create a game from FEN (setboard command) *)
   let fen = "r1bqkbnr/pppppppp/2n5/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let pos = Game.position game in
   (* Verify position was set *)
   let result_fen = Position.to_fen pos in

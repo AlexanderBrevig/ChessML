@@ -4,7 +4,7 @@ let test_position name fen depth =
   Printf.printf "\n=== Testing: %s (depth %d) ===\n" name depth;
   (* Test Search module *)
   Printf.printf "\n[Search module]\n";
-  let game = Chessml.Game.from_fen fen in
+  let game = Chessml.Game.of_fen fen in
   let start1 = Unix.gettimeofday () in
   let result1 = Chessml.Search.find_best_move ~verbose:false game depth in
   let end1 = Unix.gettimeofday () in

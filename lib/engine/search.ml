@@ -482,24 +482,26 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
          | Some mv ->
            let new_pos = Position.make_move pos mv in
            let new_key = Zobrist.compute new_pos in
-           let material_diff = Eval.count_material pos (Position.side_to_move pos)
-                               - Eval.count_material pos (Color.opponent (Position.side_to_move pos)) in
+           let material_diff =
+             Eval.count_material pos (Position.side_to_move pos)
+             - Eval.count_material pos (Color.opponent (Position.side_to_move pos))
+           in
            let repetition_count = Eval.count_repetitions new_key game_history in
-           if repetition_count > 0 then
+           if repetition_count > 0
+           then (
              let base_penalty = 150 in
              let scaling = if repetition_count >= 2 then 2 else 1 in
-             if material_diff > 200 then
-               score - (base_penalty * scaling) (* Penalize repetition when winning *)
-             else if material_diff < -200 then
-               score + (base_penalty * scaling) (* Favor repetition when losing *)
-             else if material_diff > 50 then
-               score - (base_penalty / 2 * scaling)
-             else if material_diff < -50 then
-               score + (base_penalty / 2 * scaling)
-             else
-               score - (base_penalty / 4 * scaling) (* Slight penalty when equal *)
-           else
-             score
+             if material_diff > 200
+             then score - (base_penalty * scaling) (* Penalize repetition when winning *)
+             else if material_diff < -200
+             then score + (base_penalty * scaling) (* Favor repetition when losing *)
+             else if material_diff > 50
+             then score - (base_penalty / 2 * scaling)
+             else if material_diff < -50
+             then score + (base_penalty / 2 * scaling)
+             else score - (base_penalty / 4 * scaling)
+             (* Slight penalty when equal *))
+           else score
          | None -> score
        in
        let depth_end = Unix.gettimeofday () in
@@ -508,7 +510,11 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
        total_nodes := Int64.add !total_nodes !depth_nodes;
        (* Store result for this depth *)
        let current_result =
-         { best_move; score = adjusted_score; nodes = !total_nodes; depth = current_depth }
+         { best_move
+         ; score = adjusted_score
+         ; nodes = !total_nodes
+         ; depth = current_depth
+         }
        in
        best_result := Some current_result;
        (* Check time limit *)

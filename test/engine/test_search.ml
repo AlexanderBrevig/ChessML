@@ -49,7 +49,7 @@ let test_iterative_deepening_slow () =
 ;;
 
 let test_quiescence_starting_position () =
-  let game = Game.from_fen Position.fen_startpos in
+  let game = Game.of_fen Position.fen_startpos in
   let pos = Game.position game in
   let static_eval = Eval.evaluate pos in
   let result = Search.find_best_move ~verbose:false game 2 in
@@ -69,7 +69,7 @@ let test_quiescence_starting_position () =
 let test_quiescence_tactical_position () =
   (* Position with a hanging bishop that can be captured *)
   let fen = "rnbqk1nr/pppp2pp/5p2/2b5/4Pp2/2P5/PP1P2PP/RNBQKBNR w KQkq - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let pos = Game.position game in
   let static_eval = Eval.evaluate pos in
   let result = Search.find_best_move ~verbose:false game 2 in
@@ -84,7 +84,7 @@ let test_quiescence_tactical_position () =
 let test_quiescence_quiet_endgame () =
   (* King vs King endgame - should be very quiet *)
   let fen = "8/8/8/3k4/8/3K4/8/8 w - - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   let result = Search.find_best_move ~verbose:false game 2 in
   (* In K vs K, there might be no legal moves or only king moves *)
   Alcotest.(check bool) "Search completes without error" true true;

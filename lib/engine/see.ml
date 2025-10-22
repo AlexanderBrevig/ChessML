@@ -42,8 +42,7 @@ let find_least_valuable_attacker (attackers : (Square.t * piece_kind) list)
     (* Sort by piece value and return the least valuable *)
     let sorted =
       List.sort
-        (fun (_, k1) (_, k2) ->
-           compare (PieceKind.value k1) (PieceKind.value k2))
+        (fun (_, k1) (_, k2) -> compare (PieceKind.value k1) (PieceKind.value k2))
         attackers
     in
     Some (List.hd sorted)
@@ -96,10 +95,10 @@ let rec see_recursive
             (side_to_move = White && target_rank = 7)
             || (side_to_move = Black && target_rank = 0)
           then Piece_tables.piece_kind_total_value Queen side_to_move target
-          else 
+          else
             (* Pawn's value at the target square *)
             Piece_tables.piece_kind_total_value attacker_kind side_to_move target)
-        else 
+        else
           (* Piece's value at the target square *)
           Piece_tables.piece_kind_total_value attacker_kind side_to_move target
       in
@@ -170,10 +169,10 @@ let evaluate (pos : Position.t) (move : Move.t) : int =
     match move with
     | _ when Move.is_capture move || Move.is_en_passant move ->
       (match Position.piece_at pos to_sq with
-       | Some p -> Piece_tables.piece_total_value p to_sq  (* Include positional value *)
+       | Some p -> Piece_tables.piece_total_value p to_sq (* Include positional value *)
        | None ->
          (* En passant: captured pawn is not on target square *)
-         if Move.is_en_passant move 
+         if Move.is_en_passant move
          then (
            let captured_pawn_sq =
              if moving_piece.color = White then to_sq - 8 else to_sq + 8
@@ -205,9 +204,13 @@ let evaluate (pos : Position.t) (move : Move.t) : int =
       if Move.is_promotion move
       then (
         match Move.promotion move with
-        | Some promo_piece -> Piece_tables.piece_kind_total_value promo_piece moving_piece.color to_sq
+        | Some promo_piece ->
+          Piece_tables.piece_kind_total_value promo_piece moving_piece.color to_sq
         | None -> Piece_tables.piece_total_value moving_piece to_sq)
-      else Piece_tables.piece_total_value moving_piece to_sq  (* Piece value at target square *)
+      else
+        Piece_tables.piece_total_value
+          moving_piece
+          to_sq (* Piece value at target square *)
     in
     (* Initial gain: we captured target, but now our piece can be recaptured *)
     let initial_gain = captured_value in

@@ -28,7 +28,6 @@ let is_passed_pawn (pos : Position.t) (sq : int) (color : color) : bool =
   let file = sq mod 8 in
   let rank = sq / 8 in
   let opponent = Color.opponent color in
-  
   (* First check: is this the most advanced pawn on this file for our color?
      A pawn blocked by a friendly pawn ahead is not a passed pawn! *)
   let is_most_advanced =
@@ -36,8 +35,7 @@ let is_passed_pawn (pos : Position.t) (sq : int) (color : color) : bool =
     let pawns_on_file = ref [] in
     for r = 0 to 7 do
       let check_sq = file + (r * 8) in
-      if Bitboard.contains our_pawns check_sq
-      then pawns_on_file := r :: !pawns_on_file
+      if Bitboard.contains our_pawns check_sq then pawns_on_file := r :: !pawns_on_file
     done;
     (* For white, most advanced = highest rank. For black, most advanced = lowest rank *)
     match !pawns_on_file with
@@ -47,7 +45,6 @@ let is_passed_pawn (pos : Position.t) (sq : int) (color : color) : bool =
       then rank = List.fold_left max min_int ranks
       else rank = List.fold_left min max_int ranks
   in
-  
   if not is_most_advanced
   then false (* Not the frontmost pawn - not passed *)
   else (

@@ -6,7 +6,7 @@ type t
 
 val make : Position.t -> t
 val default : unit -> t
-val from_fen : string -> t
+val of_fen : string -> t
 val position : t -> Position.t
 val history : t -> Zobrist.t list
 val make_move : t -> Move.t -> t

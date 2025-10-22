@@ -26,7 +26,7 @@ let make position =
 ;;
 
 let default () = make (Position.default ())
-let from_fen fen = make (Position.of_fen fen)
+let of_fen fen = make (Position.of_fen fen)
 let position game = game.position
 let history game = game.history
 

@@ -4,6 +4,7 @@ open Chessml
 
 (** Configuration *)
 let max_ply = 20 (* Maximum opening depth in half-moves *)
+
 let min_game_count = 3 (* Minimum games to include a position *)
 let openings_dir = "openings" (* Directory containing PGN files *)
 
@@ -12,7 +13,9 @@ module MoveKey = struct
   type t = int64 * Move.t
 
   let equal (k1, m1) (k2, m2) =
-    Int64.equal k1 k2 && Move.from m1 = Move.from m2 && Move.to_square m1 = Move.to_square m2
+    Int64.equal k1 k2
+    && Move.from m1 = Move.from m2
+    && Move.to_square m1 = Move.to_square m2
   ;;
 
   let hash (k, m) = Hashtbl.hash (Int64.to_int k, Move.from m, Move.to_square m)
@@ -23,13 +26,14 @@ module MoveStats = Hashtbl.Make (MoveKey)
 (** Write hash table to binary file *)
 let write_stats_to_file filename stats =
   let oc = open_out_bin filename in
-  MoveStats.iter (fun (zobrist, move) count ->
-    output_binary_int oc (Int64.to_int (Int64.shift_right zobrist 32));
-    output_binary_int oc (Int64.to_int zobrist);
-    output_byte oc (Move.from move);
-    output_byte oc (Move.to_square move);
-    output_binary_int oc count
-  ) stats;
+  MoveStats.iter
+    (fun (zobrist, move) count ->
+       output_binary_int oc (Int64.to_int (Int64.shift_right zobrist 32));
+       output_binary_int oc (Int64.to_int zobrist);
+       output_byte oc (Move.from move);
+       output_byte oc (Move.to_square move);
+       output_binary_int oc count)
+    stats;
   close_out oc
 ;;
 
@@ -40,17 +44,23 @@ let merge_stats_from_file filename stats =
     while true do
       let high = input_binary_int ic in
       let low = input_binary_int ic in
-      let zobrist = Int64.logor (Int64.shift_left (Int64.of_int high) 32) (Int64.of_int low) in
+      let zobrist =
+        Int64.logor (Int64.shift_left (Int64.of_int high) 32) (Int64.of_int low)
+      in
       let from_sq = input_byte ic in
       let to_sq = input_byte ic in
       let count = input_binary_int ic in
       (* Create a placeholder move - we only care about from/to for the key *)
       let move = Move.make from_sq to_sq Move.Quiet in
-      let key = (zobrist, move) in
-      let old = try MoveStats.find stats key with Not_found -> 0 in
+      let key = zobrist, move in
+      let old =
+        try MoveStats.find stats key with
+        | Not_found -> 0
+      in
       MoveStats.replace stats key (old + count)
     done
-  with End_of_file ->
+  with
+  | End_of_file ->
     close_in ic;
     Sys.remove filename
 ;;
@@ -89,12 +99,14 @@ let process_game local_stats game =
   let moves = Pgn_parser.game_to_moves game in
   let san_move_count = List.length game.Pgn_parser.moves in
   let parsed_move_count = List.length moves in
-  if !process_game_debug && san_move_count > 0 then (
-    Printf.eprintf "Debug: SAN moves (%d): %s\n" san_move_count
+  if !process_game_debug && san_move_count > 0
+  then (
+    Printf.eprintf
+      "Debug: SAN moves (%d): %s\n"
+      san_move_count
       (String.concat ", " (List.filteri (fun i _ -> i < 5) game.Pgn_parser.moves));
     Printf.eprintf "Debug: Parsed moves (%d)\n" parsed_move_count;
-    process_game_debug := false
-  );
+    process_game_debug := false);
   let start_pos = Position.default () in
   let plies_processed = process_moves start_pos moves 0 in
   plies_processed
@@ -106,76 +118,75 @@ let process_all_files files =
   Printf.printf "📂 Processing %d PGN files from %s/\n\n" total_files openings_dir;
   (* Lock-free parallel processing using Domainslib.Task *)
   let open Domainslib in
-  let num_domains = try int_of_string (Sys.getenv "CHESSML_PARALLEL") with _ -> 4 in
+  let num_domains =
+    try int_of_string (Sys.getenv "CHESSML_PARALLEL") with
+    | _ -> 4
+  in
   let pool = Task.setup_pool ~num_domains () in
   let completed = Atomic.make 0 in
   let total_games = Atomic.make 0 in
   let total_plies = Atomic.make 0 in
   let chunk_num = ref 0 in
-  
   (* Process files in chunks to manage memory *)
   let chunk_size = num_domains * 8 in
   let rec process_chunks remaining =
     match remaining with
     | [] -> ()
     | _ ->
-      let chunk, rest = 
+      let chunk, rest =
         let rec take n acc lst =
           match lst, n with
-          | [], _ | _, 0 -> (List.rev acc, lst)
+          | [], _ | _, 0 -> List.rev acc, lst
           | x :: xs, n -> take (n - 1) (x :: acc) xs
         in
         take chunk_size [] remaining
       in
-      
       chunk_num := !chunk_num + 1;
-      let temp_files = 
+      let temp_files =
         Task.run pool (fun () ->
-          List.map (fun filename ->
-            Task.async pool (fun () ->
-              let games = Pgn_parser.parse_file filename in
-              let local_stats = MoveStats.create 500 in
-              let file_plies = ref 0 in
-              List.iter
-                (fun game ->
-                  let plies = process_game local_stats game in
-                  file_plies := !file_plies + plies)
-                games;
-              let count = Atomic.fetch_and_add completed 1 + 1 in
-              ignore (Atomic.fetch_and_add total_games (List.length games));
-              ignore (Atomic.fetch_and_add total_plies !file_plies);
-              Printf.printf "[%d/%d] %s: %d games, %d plies\n"
-                count
-                total_files
-                (Filename.basename filename)
-                (List.length games)
-                !file_plies;
-              flush stdout;
-              
-              (* Write to temp file and return filename *)
-              let temp_file = Printf.sprintf "/tmp/chessml_book_%d_%d.tmp" !chunk_num count in
-              write_stats_to_file temp_file local_stats;
-              MoveStats.clear local_stats;
-              temp_file
-            )
-          ) chunk
-          |> List.map (Task.await pool)
-        )
+          List.map
+            (fun filename ->
+               Task.async pool (fun () ->
+                 let games = Pgn_parser.parse_file filename in
+                 let local_stats = MoveStats.create 500 in
+                 let file_plies = ref 0 in
+                 List.iter
+                   (fun game ->
+                      let plies = process_game local_stats game in
+                      file_plies := !file_plies + plies)
+                   games;
+                 let count = Atomic.fetch_and_add completed 1 + 1 in
+                 ignore (Atomic.fetch_and_add total_games (List.length games));
+                 ignore (Atomic.fetch_and_add total_plies !file_plies);
+                 Printf.printf
+                   "[%d/%d] %s: %d games, %d plies\n"
+                   count
+                   total_files
+                   (Filename.basename filename)
+                   (List.length games)
+                   !file_plies;
+                 flush stdout;
+                 (* Write to temp file and return filename *)
+                 let temp_file =
+                   Printf.sprintf "/tmp/chessml_book_%d_%d.tmp" !chunk_num count
+                 in
+                 write_stats_to_file temp_file local_stats;
+                 MoveStats.clear local_stats;
+                 temp_file))
+            chunk
+          |> List.map (Task.await pool))
       in
-      
       (* Merge temp files into global stats *)
       List.iter (fun temp_file -> merge_stats_from_file temp_file move_counts) temp_files;
       Gc.minor ();
-      
       process_chunks rest
   in
-  
   process_chunks files;
   Task.teardown_pool pool;
-  
   let final_games = Atomic.get total_games in
   let final_plies = Atomic.get total_plies in
-  Printf.printf "\n📊 Processed %d games total (avg %.1f plies per game)\n\n"
+  Printf.printf
+    "\n📊 Processed %d games total (avg %.1f plies per game)\n\n"
     final_games
     (float_of_int final_plies /. float_of_int final_games)
 ;;
@@ -185,9 +196,7 @@ let create_book_entries () =
   (* First pass: find max count for normalization context *)
   let max_count = ref 0 in
   MoveStats.iter (fun _ count -> max_count := max !max_count count) move_counts;
-  
   Printf.printf "   • Max game count for any move: %d\n" !max_count;
-  
   let entries = ref [] in
   MoveStats.iter
     (fun (zobrist, move) count ->
@@ -242,7 +251,9 @@ let () =
   let oc = open_out_bin "book.bin" in
   List.iter
     (fun (key, move, weight) ->
-       let entry = Polyglot.make_entry key (Move.from move) (Move.to_square move) weight in
+       let entry =
+         Polyglot.make_entry key (Move.from move) (Move.to_square move) weight
+       in
        Polyglot.write_entry oc entry)
     sorted_entries;
   close_out oc;

@@ -160,7 +160,7 @@ let parse_position (tokens : string list) (current_game : Game.t) : Game.t =
         else collect_fen (token :: acc) rest
     in
     let fen_string, moves = collect_fen [] fen_parts in
-    let game = Game.from_fen fen_string in
+    let game = Game.of_fen fen_string in
     if moves = [] then game else apply_moves game moves
   | _ ->
     Printf.eprintf "Warning: Invalid position command\n";

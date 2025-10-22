@@ -16,7 +16,7 @@ let () =
   Printf.printf "Performance Breakdown Analysis\n";
   Printf.printf "==============================\n\n";
   let fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   (* Test 1: Move generation speed *)
   Printf.printf "\n1. Move Generation Test\n";
   Printf.printf "   Testing 100,000 move generations\n";

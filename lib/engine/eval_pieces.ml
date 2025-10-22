@@ -88,11 +88,11 @@ let is_piece_hanging (pos : Position.t) (sq : Square.t) : bool =
 ;;
 
 (** Check if piece is en prise (can be captured with immediate material gain) *)
-let is_piece_en_prise 
-      (pos : Position.t) 
+let is_piece_en_prise
+      (pos : Position.t)
       (sq : Square.t)
       (piece_kind_value : piece_kind -> int)
-  : bool 
+  : bool
   =
   match Position.piece_at pos sq with
   | None -> false
@@ -125,11 +125,11 @@ let is_piece_en_prise
 ;;
 
 (** Evaluate threats to a specific piece - returns negative if piece is at risk *)
-let evaluate_piece_threats 
-      (pos : Position.t) 
+let evaluate_piece_threats
+      (pos : Position.t)
       (sq : Square.t)
       (piece_kind_value : piece_kind -> int)
-  : int 
+  : int
   =
   match Position.piece_at pos sq with
   | None -> 0
@@ -149,8 +149,7 @@ let evaluate_piece_threats
            then (
              has_attacker := true;
              let attacker_val = piece_kind_value attacker.kind in
-             if attacker_val < !min_attacker_value
-             then min_attacker_value := attacker_val)
+             if attacker_val < !min_attacker_value then min_attacker_value := attacker_val)
          | _ -> ())
       opponent_pieces;
     (* Return the risk differential - negative if under attack by cheaper piece *)

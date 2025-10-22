@@ -164,7 +164,7 @@ let test_castling_move_execution () =
 let test_castling_priority_in_search () =
   (* Test that castling gets high priority in search *)
   let fen = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1" in
-  let game = Game.from_fen fen in
+  let game = Game.of_fen fen in
   (* Search for best move with shallow depth *)
   let result = Search.find_best_move ~verbose:false ~max_time_ms:1000 game 3 in
   match result.Search.best_move with
