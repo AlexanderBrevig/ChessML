@@ -14,12 +14,13 @@ Play chess against ChessML using any UCI- or XBoard-compatible GUI! ♟️
 
 ## ✨ Features
 
-- **Fast Move Generation** ⚡: Efficient bitboard-based move generation
-- **Alpha-Beta Search** 🧠: Minimax search with alpha-beta pruning
-- **Transposition Tables** 💾: Position caching for faster search
-- **Opening Book** 📚: Support for Polyglot opening books generated from PGN
-- **UCI Protocol** 🖥️: Compatible with chess GUIs like Arena and ChessBase
-- **XBoard Protocol** 🎮: Play via the xboard/winboard interface
+- ⚡**Fast Move Generation**: Efficient bitboard-based move generation
+- 🧠**Alpha-Beta Search**: Minimax search with alpha-beta pruning
+- 💾**Transposition Tables**: Position caching for faster search
+- 📚**Opening Book**: Support for Polyglot opening books generated from PGN
+- 🏗️**Book Generator**: 1M+ position-move combinations from 9M+ games
+- 🖥️**UCI Protocol**: Compatible with chess GUIs like Arena and ChessBase
+- 🎮**XBoard Protocol**: Play via the xboard/winboard interface
 
 ## 🚀 Quick Start
 
