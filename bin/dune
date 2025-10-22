@@ -22,3 +22,10 @@
  (name create_book)
  (public_name create-book)
  (libraries chessml domainslib))
+
+;; Play from FEN utility
+
+(executable
+ (name play_from)
+ (public_name play-from)
+ (libraries chessml))

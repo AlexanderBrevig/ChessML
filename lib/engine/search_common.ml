@@ -207,6 +207,7 @@ module Ordering = struct
 
   let castle_score = 15000
   let check_score = 10000
+  let promotion_base = 9000 (* Promotions are very strong - just below checks *)
   let winning_capture_base = 8000
   let equal_capture_base = 7000
   let killer_score = 5000
@@ -302,6 +303,16 @@ module Ordering = struct
     then castle_score
     else if gives_check_fast pos mv
     then check_score
+    else if Move.is_promotion mv
+    then (
+      (* Promotions are very strong - prioritize them highly *)
+      (* Queen promotion gets highest score, others get slightly less *)
+      match Move.promotion mv with
+      | Some Queen -> promotion_base + 500 (* e7e8q = 9500 *)
+      | Some Rook -> promotion_base + 100 (* e7e8r = 9100 *)
+      | Some Bishop -> promotion_base + 50 (* e7e8b = 9050 *)
+      | Some Knight -> promotion_base + 50 (* e7e8n = 9050 *)
+      | _ -> promotion_base)
     else if Move.is_capture mv
     then (
       (* Use MVV-LVA for quick pre-filtering *)

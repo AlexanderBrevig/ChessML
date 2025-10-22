@@ -42,3 +42,9 @@ val is_piece_en_prise : Position.t -> Square.t -> bool
     Returns negative value if piece is under threat (more negative = worse).
     Returns 0 if piece is safe. *)
 val evaluate_piece_threats : Position.t -> Square.t -> int
+
+(** Evaluate 50-move rule incentive/penalty.
+    Returns negative penalty when approaching 50-move draw while winning.
+    Scaled by material advantage - larger advantage = larger penalty to encourage progress.
+    Takes position and material difference in centipawns. *)
+val evaluate_fifty_move_incentive : Position.t -> int -> int

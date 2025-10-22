@@ -36,3 +36,6 @@ val make_null_move : t -> t
 val of_fen : string -> t
 val default : unit -> t
 val to_fen : t -> string
+
+(** Draw ASCII board representation of the position *)
+val draw_board : t -> unit

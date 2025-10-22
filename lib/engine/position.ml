@@ -628,3 +628,31 @@ let make_null_move pos =
       (* King positions unchanged in null move *)
   }
 ;;
+
+(** Draw ASCII board representation of the position *)
+let draw_board pos =
+  Printf.printf "  +---+---+---+---+---+---+---+---+\n";
+  for rank = 7 downto 0 do
+    Printf.printf "%d |" (rank + 1);
+    for file = 0 to 7 do
+      let sq = rank * 8 + file in
+      let piece_char = match piece_at pos sq with
+        | None -> " "
+        | Some p ->
+          let c = match p.kind with
+            | Pawn -> "P"
+            | Knight -> "N"
+            | Bishop -> "B"
+            | Rook -> "R"
+            | Queen -> "Q"
+            | King -> "K"
+          in
+          if p.color = White then c else String.lowercase_ascii c
+      in
+      Printf.printf " %s |" piece_char
+    done;
+    Printf.printf "\n";
+    Printf.printf "  +---+---+---+---+---+---+---+---+\n"
+  done;
+  Printf.printf "    a   b   c   d   e   f   g   h\n"
+;;
