@@ -2,6 +2,7 @@
 layout: default
 title: Chess Programming Guide
 nav_order: 2
+has_children: true
 description: "Complete overview of chess programming concepts and techniques"
 permalink: /docs/chess-programming-guide
 ---

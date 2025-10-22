@@ -8,7 +8,7 @@ baseurl: /chessml
 remote_theme: just-the-docs/just-the-docs
 
 # Color scheme
-color_scheme: light
+color_scheme: dark
 
 # Logo
 logo: "/assets/images/logo.png"
@@ -39,22 +39,14 @@ back_to_top_text: "Back to top"
 # Heading anchors
 heading_anchors: true
 
-# Collections
-collections:
-  docs:
-    permalink: "/:collection/:path/"
-    output: true
-
 # Default settings
 defaults:
   - scope:
       path: "docs"
-      type: "pages"
     values:
       layout: "default"
   - scope:
       path: ""
-      type: "docs"
     values:
       layout: "default"
 
