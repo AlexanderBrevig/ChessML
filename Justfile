@@ -70,10 +70,6 @@ format:
 format-check:
     dune build @fmt
 
-pychess:
-    dune build
-    pychess
-
 # Run perft benchmarks
 perft depth="5":
     dune exec examples/perft_example.exe {{depth}}

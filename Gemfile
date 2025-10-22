@@ -3,10 +3,6 @@ source "https://rubygems.org"
 gem "jekyll", "~> 4.3"
 gem "just-the-docs", "0.8.2"
 
-group :jekyll_plugins do
-  gem "jekyll-seo-tag", "~> 2.8"
-end
-
 # Windows and JRuby does not include zoneinfo files, so bundle the tzinfo-data gem
 # and associated library.
 platforms :mingw, :x64_mingw, :mswin, :jruby do
