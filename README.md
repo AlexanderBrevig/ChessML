@@ -1,16 +1,25 @@
 # ChessML
 
-> [!NOTE]
-> **Personal Learning Project**  
+> [!NOTE] > **Personal Learning Project**  
 > This is a personal hobby project created for learning chess programming and OCaml.
 > It has no specific roadmap, goals, or direction—just exploration and experimentation.
 > Code quality and features evolve organically as I learn. Contributions and suggestions
 > are welcome, but expect things to change arbitrarily as I try new ideas!
+>
 > I will concider this project done when I can no longer beat it 😎
 
 A bitboard chess engine written in OCaml with UCI & XBoard protocol support.
 
-Play chess against ChessML using PyChess or any UCI- or XBoard-compatible GUI! ♟️
+Play chess against ChessML using any UCI- or XBoard-compatible GUI! ♟️
+
+## ✨ Features
+
+- **Fast Move Generation** ⚡: Efficient bitboard-based move generation
+- **Alpha-Beta Search** 🧠: Minimax search with alpha-beta pruning
+- **Transposition Tables** 💾: Position caching for faster search
+- **Opening Book** 📚: Support for Polyglot opening books generated from PGN
+- **UCI Protocol** 🖥️: Compatible with chess GUIs like Arena and ChessBase
+- **XBoard Protocol** 🎮: Play via the xboard/winboard interface
 
 ## 🚀 Quick Start
 
@@ -18,8 +27,7 @@ Play chess against ChessML using PyChess or any UCI- or XBoard-compatible GUI! �
 
 ```bash
 # Ubuntu/Debian
-sudo apt install opam pychess stockfish
-# you also need to install cutechess, see below
+sudo apt install opam stockfish
 
 # Initialize OCaml environment
 opam init
@@ -27,19 +35,6 @@ opam switch create 5.3.0
 opam switch 5.3.0
 eval (opam env)
 opam install dune alcotest ocaml-lsp-server ocamlformat
-```
-
-Cutechess install
-
-```bash
-sudo apt install git build-essential cmake qtbase5-dev qtbase5-dev-tools libqt5svg5-dev
-git clone git@github.com:cutechess/cutechess.git
-cd cutechess
-mkdir build
-cd build
-cmake ..
-make
-cp cutechess cutechess-cli /usr/local/bin # copy binaries to some directory in your path or add $PWD to $PATH
 ```
 
 ### Build the Engine
@@ -51,11 +46,38 @@ dune build
 # Release build (optimized, ~30-40% faster performance)
 dune build --profile=release
 
-# Build the opening book
-dune exec bin/create_book.exe
 ```
 
-### Opening Book Setup
+> **⚠️ Performance Note**: For benchmarks, testing, or actual gameplay, **always use `--profile=release`**!
+> Release mode enables critical optimizations (inlining, flambda, bounds check elimination) that significantly improve search speed.
+>
+> - Debug mode: ~86K NPS
+> - Release mode: ~120K NPS (+40% faster)
+
+### Opening Book Creation and Setup
+
+> ![WARN]
+> You will need 4.5 GiB RAM to run this.
+> It takes ~15 minutes to complete the process and generates 18MB of data.
+
+```bash
+./scripts/download_openings.fish # about 6 minutes and 30 seconds
+dune build --profile=release && CHESSML_PARALLEL=8 ./_build/default/bin/create_book.exe # about 8 minutes
+```
+
+You should the see something like
+
+```
+📊 Processed 9065131 games total (avg 7.9 plies per game)
+
+📝 Building book entries (min 3 games)...
+   • 1113046 unique position-move combinations
+   • 682561 unique positions
+
+💾 Writing book.bin...
+   • 17808736 bytes
+   • 1113046 moves
+```
 
 ChessML will automatically look for the opening book in the following locations (in order):
 
@@ -75,22 +97,6 @@ mkdir -p ~/.local/share/chessml
 # Copy the book file
 cp book.bin ~/.local/share/chessml/
 ```
-
-
-> **⚠️ Performance Note**: For benchmarks, testing, or actual gameplay, **always use `--profile=release`**!
-> Release mode enables critical optimizations (inlining, flambda, bounds check elimination) that significantly improve search speed.
->
-> - Debug mode: ~86K NPS
-> - Release mode: ~120K NPS (+40% faster)
-
-## ✨ Features
-
-- **Fast Move Generation** ⚡: Efficient bitboard-based move generation
-- **Alpha-Beta Search** 🧠: Minimax search with alpha-beta pruning
-- **Transposition Tables** 💾: Position caching for faster search
-- **Opening Book** 📚: Support for Polyglot opening books
-- **UCI Protocol** 🖥️: Compatible with chess GUIs like Arena and ChessBase
-- **XBoard Protocol** 🎮: Play via the xboard/winboard interface
 
 ## 🔧 Development
 
@@ -210,7 +216,7 @@ dune runtest
 just test
 
 # Deep search validation when needed
-just test-search-slow
+just test-search
 
 # Run specific test categories
 just test-core          # Core data structures
@@ -222,25 +228,20 @@ The test suite automatically runs quick tests by default to keep development cyc
 
 ### 🎲 Play Against ChessML
 
-1. Launch PyChess:
+Cutechess install
 
-   ```bash
-   pychess
-   ```
+```bash
+sudo apt install git build-essential cmake qtbase5-dev qtbase5-dev-tools libqt5svg5-dev
+git clone git@github.com:cutechess/cutechess.git
+cd cutechess
+mkdir build
+cd build
+cmake ..
+make
+cp cutechess cutechess-cli /usr/local/bin # copy binaries to some directory in your path or add $PWD to $PATH
+```
 
-2. Add ChessML engine:
-
-   - Go to **Edit → Preferences → Engines**
-   - Click **Add**
-   - Command: `/path/to/ChessML/ChessML`
-   - Name: `ChessML`
-   - Click **OK**
-
-3. Start a game:
-   - **File → New Game**
-   - Select **Human vs Engine**
-   - Choose **ChessML**
-   - Click **Start**
+Launch cutechess, add the engine in settings (I recomment to use xboard version) and create a new game.
 
 ## 📖 Documentation
 
@@ -252,6 +253,7 @@ The test suite automatically runs quick tests by default to keep development cyc
 - [Stockfish](https://github.com/official-stockfish/Stockfish) - Reference implementation
 - [Real World OCaml](https://dev.realworldocaml.org/)
 - [OCaml Manual](https://ocaml.org/manual/)
+- [PGNMentor](https://www.pgnmentor.com) - Opening PGN database
 
 ## 🤝 Contributing
 
@@ -263,12 +265,10 @@ ChessML is licensed under the [MIT License](LICENSE) - see the [LICENSE](https:/
 
 ## 📝 TODO
 
-- Avoid repetition draw when clearly ahead
-- Improve parallel search performance
+- Figure out if I can publish the book.bin generated from PGNMentor
 - Tune evaluation parameters
 - Add endgame tablebase support
-- Implement time management
-- Add more opening book positions
+- Improve parallel search performance
 
 ### Running Engine Matches
 

@@ -3,8 +3,8 @@
 open Chessml
 
 (** Configuration *)
-let max_ply = 30 (* Maximum opening depth in half-moves *)
-let min_game_count = 1 (* Minimum games to include a position *)
+let max_ply = 20 (* Maximum opening depth in half-moves *)
+let min_game_count = 3 (* Minimum games to include a position *)
 let openings_dir = "openings" (* Directory containing PGN files *)
 
 (** Hash table to accumulate move statistics: (zobrist_key, move) -> count *)
@@ -20,7 +20,42 @@ end
 
 module MoveStats = Hashtbl.Make (MoveKey)
 
-let move_counts = MoveStats.create 1000000
+(** Write hash table to binary file *)
+let write_stats_to_file filename stats =
+  let oc = open_out_bin filename in
+  MoveStats.iter (fun (zobrist, move) count ->
+    output_binary_int oc (Int64.to_int (Int64.shift_right zobrist 32));
+    output_binary_int oc (Int64.to_int zobrist);
+    output_byte oc (Move.from move);
+    output_byte oc (Move.to_square move);
+    output_binary_int oc count
+  ) stats;
+  close_out oc
+;;
+
+(** Read stats from binary file and merge into hash table *)
+let merge_stats_from_file filename stats =
+  let ic = open_in_bin filename in
+  try
+    while true do
+      let high = input_binary_int ic in
+      let low = input_binary_int ic in
+      let zobrist = Int64.logor (Int64.shift_left (Int64.of_int high) 32) (Int64.of_int low) in
+      let from_sq = input_byte ic in
+      let to_sq = input_byte ic in
+      let count = input_binary_int ic in
+      (* Create a placeholder move - we only care about from/to for the key *)
+      let move = Move.make from_sq to_sq Move.Quiet in
+      let key = (zobrist, move) in
+      let old = try MoveStats.find stats key with Not_found -> 0 in
+      MoveStats.replace stats key (old + count)
+    done
+  with End_of_file ->
+    close_in ic;
+    Sys.remove filename
+;;
+
+let move_counts = MoveStats.create 100000
 
 (** Get all PGN files from directory *)
 let get_pgn_files dir =
@@ -30,10 +65,10 @@ let get_pgn_files dir =
   |> List.map (fun f -> Filename.concat dir f)
 ;;
 
-(** Process a single game and add moves to statistics *)
+(** Process a single game and add moves to local statistics *)
 let process_game_debug = ref true
 
-let process_game game =
+let process_game local_stats game =
   let rec process_moves pos move_list ply_count =
     if ply_count >= max_ply
     then ply_count (* Return number of plies processed *)
@@ -44,10 +79,10 @@ let process_game game =
         let key = Zobrist.compute pos in
         let move_key = key, mv in
         let current_count =
-          try MoveStats.find move_counts move_key with
+          try MoveStats.find local_stats move_key with
           | Not_found -> 0
         in
-        MoveStats.replace move_counts move_key (current_count + 1);
+        MoveStats.replace local_stats move_key (current_count + 1);
         let new_pos = Position.make_move pos mv in
         process_moves new_pos rest (ply_count + 1))
   in
@@ -67,30 +102,82 @@ let process_game game =
 
 (** Process all PGN files and build statistics *)
 let process_all_files files =
-  let total_games = ref 0 in
-  let total_plies = ref 0 in
   let total_files = List.length files in
   Printf.printf "📂 Processing %d PGN files from %s/\n\n" total_files openings_dir;
-  List.iteri
-    (fun idx filename ->
-       Printf.printf
-         "[%d/%d] %s... "
-         (idx + 1)
-         total_files
-         (Filename.basename filename);
-       flush stdout;
-       let games = Pgn_parser.parse_file filename in
-       let game_count = List.length games in
-       total_games := !total_games + game_count;
-       let plies_in_file = ref 0 in
-       List.iter (fun g -> plies_in_file := !plies_in_file + process_game g) games;
-       total_plies := !total_plies + !plies_in_file;
-       Printf.printf "✓ (%d games, avg %.1f plies)\n" game_count 
-         (float_of_int !plies_in_file /. float_of_int game_count))
-    files;
-  Printf.printf "\n📊 Processed %d games total (avg %.1f plies per game)\n\n" 
-    !total_games
-    (float_of_int !total_plies /. float_of_int !total_games)
+  (* Lock-free parallel processing using Domainslib.Task *)
+  let open Domainslib in
+  let num_domains = try int_of_string (Sys.getenv "CHESSML_PARALLEL") with _ -> 4 in
+  let pool = Task.setup_pool ~num_domains () in
+  let completed = Atomic.make 0 in
+  let total_games = Atomic.make 0 in
+  let total_plies = Atomic.make 0 in
+  let chunk_num = ref 0 in
+  
+  (* Process files in chunks to manage memory *)
+  let chunk_size = num_domains * 8 in
+  let rec process_chunks remaining =
+    match remaining with
+    | [] -> ()
+    | _ ->
+      let chunk, rest = 
+        let rec take n acc lst =
+          match lst, n with
+          | [], _ | _, 0 -> (List.rev acc, lst)
+          | x :: xs, n -> take (n - 1) (x :: acc) xs
+        in
+        take chunk_size [] remaining
+      in
+      
+      chunk_num := !chunk_num + 1;
+      let temp_files = 
+        Task.run pool (fun () ->
+          List.map (fun filename ->
+            Task.async pool (fun () ->
+              let games = Pgn_parser.parse_file filename in
+              let local_stats = MoveStats.create 500 in
+              let file_plies = ref 0 in
+              List.iter
+                (fun game ->
+                  let plies = process_game local_stats game in
+                  file_plies := !file_plies + plies)
+                games;
+              let count = Atomic.fetch_and_add completed 1 + 1 in
+              ignore (Atomic.fetch_and_add total_games (List.length games));
+              ignore (Atomic.fetch_and_add total_plies !file_plies);
+              Printf.printf "[%d/%d] %s: %d games, %d plies\n"
+                count
+                total_files
+                (Filename.basename filename)
+                (List.length games)
+                !file_plies;
+              flush stdout;
+              
+              (* Write to temp file and return filename *)
+              let temp_file = Printf.sprintf "/tmp/chessml_book_%d_%d.tmp" !chunk_num count in
+              write_stats_to_file temp_file local_stats;
+              MoveStats.clear local_stats;
+              temp_file
+            )
+          ) chunk
+          |> List.map (Task.await pool)
+        )
+      in
+      
+      (* Merge temp files into global stats *)
+      List.iter (fun temp_file -> merge_stats_from_file temp_file move_counts) temp_files;
+      Gc.minor ();
+      
+      process_chunks rest
+  in
+  
+  process_chunks files;
+  Task.teardown_pool pool;
+  
+  let final_games = Atomic.get total_games in
+  let final_plies = Atomic.get total_plies in
+  Printf.printf "\n📊 Processed %d games total (avg %.1f plies per game)\n\n"
+    final_games
+    (float_of_int final_plies /. float_of_int final_games)
 ;;
 
 (** Convert statistics to book entries with weights *)
