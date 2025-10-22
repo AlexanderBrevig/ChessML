@@ -21,12 +21,9 @@ let has_pawn_on pos color sq = Bitboard.contains (get_pawns pos color) sq
 (** Count pawns on a file for a color using bitboards *)
 let count_pawns_on_file_bb pos file_int color =
   let pawns = get_pawns pos color in
-  (* Create file mask by setting all squares on that file *)
-  let file_mask = ref Bitboard.empty in
-  for rank = 0 to 7 do
-    file_mask := Bitboard.set !file_mask (file_int + (rank * 8))
-  done;
-  Bitboard.population (Int64.logand pawns !file_mask)
+  (* Create file mask using bitshift - file_a is 0x0101010101010101L *)
+  let file_mask = Int64.shift_left Bitboard.file_a file_int in
+  Bitboard.population (Int64.logand pawns file_mask)
 ;;
 
 (** Piece values in centipawns (by kind) - delegate to Types module *)
@@ -51,16 +48,16 @@ let piece_kind_total_value (kind : piece_kind) (color : color) (sq : int) : int 
   Piece_tables.piece_kind_total_value kind color sq
 ;;
 
-(** Count material for a given color *)
+(** Count material for a given color using bitboard operations *)
 let count_material (pos : Position.t) (color : color) : int =
-  let material = ref 0 in
-  let pieces = Position.get_color_pieces pos color in
-  Bitboard.iter
-    (fun sq ->
-       match Position.piece_at pos sq with
-       | Some piece when piece.color = color ->
-         material := !material + piece_kind_value piece.kind
-       | _ -> ())
-    pieces;
-  !material
+  let pawns = Position.get_pieces pos color Pawn in
+  let knights = Position.get_pieces pos color Knight in
+  let bishops = Position.get_pieces pos color Bishop in
+  let rooks = Position.get_pieces pos color Rook in
+  let queens = Position.get_pieces pos color Queen in
+  (Bitboard.population pawns * PieceKind.value Pawn)
+  + (Bitboard.population knights * PieceKind.value Knight)
+  + (Bitboard.population bishops * PieceKind.value Bishop)
+  + (Bitboard.population rooks * PieceKind.value Rook)
+  + (Bitboard.population queens * PieceKind.value Queen)
 ;;

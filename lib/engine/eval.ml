@@ -51,37 +51,50 @@ let evaluate ?(history = []) (pos : Position.t) : int =
   let side = Position.side_to_move pos in
   let opponent = Color.opponent side in
   
-  (* Single pass: collect all data in one loop *)
-  let our_material = ref 0 in
-  let their_material = ref 0 in
-  let our_position = ref 0 in
-  let their_position = ref 0 in
-  let our_pieces_count = ref 0 in
-  let their_pieces_count = ref 0 in
+  (* Helper: sum positional values for a piece type bitboard *)
+  let sum_position_values pieces kind color =
+    let piece = { Types.color; kind } in
+    let total = ref 0 in
+    Bitboard.iter (fun sq -> total := !total + piece_square_value piece sq) pieces;
+    !total
+  in
   
-  (* Count material and positional bonuses in single pass - iterate only occupied squares *)
-  let occupied = Position.occupied pos in
-  Bitboard.iter
-    (fun sq ->
-       match Position.piece_at pos sq with
-       | Some piece ->
-         let mat_value = piece_value piece in
-         let pos_value = piece_square_value piece sq in
-         if piece.color = side
-         then (
-           our_material := !our_material + mat_value;
-           our_position := !our_position + pos_value;
-           if piece.kind <> Pawn && piece.kind <> King then incr our_pieces_count)
-         else (
-           their_material := !their_material + mat_value;
-           their_position := !their_position + pos_value;
-           if piece.kind <> Pawn && piece.kind <> King then incr their_pieces_count)
-       | None -> ())
-    occupied;
+  (* Count pieces (non-pawns, non-kings) for trade incentive *)
+  let count_pieces color =
+    Bitboard.population (Position.get_pieces pos color Knight)
+    + Bitboard.population (Position.get_pieces pos color Bishop)
+    + Bitboard.population (Position.get_pieces pos color Rook)
+    + Bitboard.population (Position.get_pieces pos color Queen)
+  in
   
-  let material_diff = !our_material - !their_material in
-  let position_diff = !our_position - !their_position in
-  let total_material = !our_material + !their_material in
+  (* Material using optimized count_material from eval_helpers *)
+  let our_material = count_material pos side in
+  let their_material = count_material pos opponent in
+  
+  (* Positional bonuses - process each piece type's bitboard *)
+  let our_position =
+    sum_position_values (Position.get_pieces pos side Pawn) Pawn side
+    + sum_position_values (Position.get_pieces pos side Knight) Knight side
+    + sum_position_values (Position.get_pieces pos side Bishop) Bishop side
+    + sum_position_values (Position.get_pieces pos side Rook) Rook side
+    + sum_position_values (Position.get_pieces pos side Queen) Queen side
+    + sum_position_values (Position.get_pieces pos side King) King side
+  in
+  let their_position =
+    sum_position_values (Position.get_pieces pos opponent Pawn) Pawn opponent
+    + sum_position_values (Position.get_pieces pos opponent Knight) Knight opponent
+    + sum_position_values (Position.get_pieces pos opponent Bishop) Bishop opponent
+    + sum_position_values (Position.get_pieces pos opponent Rook) Rook opponent
+    + sum_position_values (Position.get_pieces pos opponent Queen) Queen opponent
+    + sum_position_values (Position.get_pieces pos opponent King) King opponent
+  in
+  
+  let our_pieces_count = count_pieces side in
+  let their_pieces_count = count_pieces opponent in
+  
+  let material_diff = our_material - their_material in
+  let position_diff = our_position - their_position in
+  let total_material = our_material + their_material in
   
   (* Evaluate pawn structure *)
   let pawn_structure_bonus =
@@ -94,7 +107,7 @@ let evaluate ?(history = []) (pos : Position.t) : int =
   let trade_incentive =
     if abs material_diff > 200
     then (
-      let total_pieces = !our_pieces_count + !their_pieces_count in
+      let total_pieces = our_pieces_count + their_pieces_count in
       if material_diff > 200
       then
         (* Ahead: prefer having fewer pieces total (encourage trades) *)
