@@ -13,7 +13,7 @@ A bitboard chess engine written in OCaml with UCI & XBoard protocol support.
 
 Play chess against ChessML using any UCI- or XBoard-compatible GUI! ♟️
 
-Learn with me here: alexanderbrevig.github.io/ChessML/
+Learn with me here: https://alexanderbrevig.github.io/ChessML/
 
 ## ✨ Features
 
