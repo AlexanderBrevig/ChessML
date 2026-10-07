@@ -17,6 +17,7 @@
   position
   magic
   movegen
+  polyglot_random
   zobrist
   game
   eval_helpers

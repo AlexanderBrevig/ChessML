@@ -12,17 +12,12 @@ type entry =
 
 (** {1 Move Encoding/Decoding} *)
 
-(** Encode a move in Polyglot format.
-    @param from_sq Source square (0-63)
-    @param to_sq Destination square (0-63)
-    @param promotion Promotion piece (0=none, 1=knight, 2=bishop, 3=rook, 4=queen)
-    @return 16-bit encoded move *)
-val encode_move : int -> int -> int -> int
+(** Encode a move in Polyglot format: to square in bits 0-5, from square in bits
+    6-11, promotion (1=N, 2=B, 3=R, 4=Q) in bits 12-14; castling as king takes rook *)
+val encode_move : Move.t -> int
 
-(** Decode a Polyglot move encoding to a Move.t.
-    @param pos Current position (needed to determine move kind)
-    @param encoded 16-bit encoded move
-    @return Some move if valid, None if invalid *)
+(** Decode a Polyglot move to the matching legal move in [pos], [None] if the
+    move is not legal there *)
 val decode_move : Position.t -> int -> Move.t option
 
 (** {1 Entry I/O} *)
@@ -37,10 +32,5 @@ val read_entry : in_channel -> entry option
     @param entry Entry to write *)
 val write_entry : out_channel -> entry -> unit
 
-(** Create an entry from components.
-    @param key Zobrist hash
-    @param from_sq Source square
-    @param to_sq Destination square
-    @param weight Move weight
-    @return entry *)
-val make_entry : Int64.t -> int -> int -> int -> entry
+(** Create an entry for a move in the position with the given key and weight *)
+val make_entry : Int64.t -> Move.t -> int -> entry

@@ -4,7 +4,8 @@
     decoding, file I/O, and binary structure. Works with Opening_book module which
     provides high-level query interface. Supports big-endian format with 16-byte entries.
     
-    Format: [8B: Zobrist key][2B: move][2B: weight][4B: learn data]
+    Format: [8B: Polyglot key][2B: move][2B: weight][4B: learn data], sorted by
+    key as an unsigned integer.
 *)
 
 open Chessml_core
@@ -20,56 +21,33 @@ type entry =
 
 (** {1 Move Encoding/Decoding} *)
 
-(** Encode move in Polyglot format: from_sq | (to_sq << 6) | (promo << 12) *)
-let encode_move from_sq to_sq promotion = from_sq lor (to_sq lsl 6) lor (promotion lsl 12)
-
-(** Decode polyglot move encoding to our Move.t *)
-let decode_move (pos : Position.t) (encoded : int) : Move.t option =
-  let from_sq = encoded land 0x3F in
-  let to_sq = (encoded lsr 6) land 0x3F in
-  let promo = (encoded lsr 12) land 0x7 in
-  (* Polyglot promotion encoding: 1=Knight, 2=Bishop, 3=Rook, 4=Queen *)
-  let move_kind =
-    if promo > 0
-    then (
-      match promo with
-      | 1 -> Some Move.PromoteKnight
-      | 2 -> Some Move.PromoteBishop
-      | 3 -> Some Move.PromoteRook
-      | 4 -> Some Move.PromoteQueen
-      | _ -> None)
-    else (
-      (* Determine move kind based on position *)
-      match Position.piece_at pos from_sq with
-      | None -> None
-      | Some piece ->
-        let target = Position.piece_at pos to_sq in
-        (match piece.kind with
-         | King ->
-           (* Check for castling *)
-           let file_diff = abs ((to_sq mod 8) - (from_sq mod 8)) in
-           if file_diff > 1
-           then if to_sq > from_sq then Some Move.ShortCastle else Some Move.LongCastle
-           else if target <> None
-           then Some Move.Capture
-           else Some Move.Quiet
-         | Pawn ->
-           let from_rank = from_sq / 8 in
-           let to_rank = to_sq / 8 in
-           let rank_diff = abs (to_rank - from_rank) in
-           (* Check for double push *)
-           if rank_diff = 2
-           then Some Move.PawnDoublePush (* Check for en passant *)
-           else if target = None && from_sq mod 8 <> to_sq mod 8
-           then Some Move.EnPassantCapture
-           else if target <> None
-           then Some Move.Capture
-           else Some Move.Quiet
-         | _ -> if target <> None then Some Move.Capture else Some Move.Quiet))
+(** Encode a move as in the Polyglot format: to square in bits 0-5, from square in
+    bits 6-11, promotion piece (1=N, 2=B, 3=R, 4=Q) in bits 12-14. Castling is
+    encoded as the king capturing its own rook (e1h1, e1a1, e8h8, e8a8). *)
+let encode_move (mv : Move.t) : int =
+  let from_sq = Move.from mv in
+  let to_sq =
+    match Move.kind mv with
+    | Move.ShortCastle -> from_sq + 3
+    | Move.LongCastle -> from_sq - 4
+    | _ -> Move.to_square mv
   in
-  match move_kind with
-  | Some kind -> Some (Move.make from_sq to_sq kind)
-  | None -> None
+  let promo =
+    match Move.promotion mv with
+    | None -> 0
+    | Some Knight -> 1
+    | Some Bishop -> 2
+    | Some Rook -> 3
+    | Some Queen -> 4
+    | Some (Pawn | King) -> 0
+  in
+  to_sq lor (from_sq lsl 6) lor (promo lsl 12)
+;;
+
+(** Decode a Polyglot move by matching it against the legal moves, so the result
+    always carries the right kind and is never illegal *)
+let decode_move (pos : Position.t) (encoded : int) : Move.t option =
+  List.find_opt (fun mv -> encode_move mv = encoded) (Movegen.generate_moves pos)
 ;;
 
 (** {1 Binary I/O Helpers} *)
@@ -131,7 +109,6 @@ let read_entry (ch : in_channel) : entry option =
     Some { key; move; weight; learn }
   with
   | End_of_file -> None
-  | _ -> None
 ;;
 
 (** Write a single book entry to channel *)
@@ -142,8 +119,5 @@ let write_entry (ch : out_channel) (entry : entry) : unit =
   write_u32_be ch (Int32.of_int entry.learn)
 ;;
 
-(** Create an entry from components *)
-let make_entry key from_sq to_sq weight =
-  let move = encode_move from_sq to_sq 0 in
-  { key; move; weight; learn = 0 }
-;;
+(** Create an entry for [move] in the position with key [key] *)
+let make_entry key move weight = { key; move = encode_move move; weight; learn = 0 }

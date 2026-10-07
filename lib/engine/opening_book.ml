@@ -4,7 +4,7 @@
     random move selection from book entries for varied opening play. Supports
     binary search for fast lookups and filtering by minimum weight threshold.
     
-    File format: Binary sorted by Zobrist key, 16 bytes per entry
+    File format: 16-byte entries sorted by Polyglot key (unsigned)
     Reference: http://hgm.nubati.net/book_format.html
 *)
 
@@ -63,7 +63,7 @@ let find_entries (book : book) (key : Int64.t) : Polyglot.entry list =
         match Polyglot.read_entry ch with
         | None -> low
         | Some entry ->
-          let cmp = Int64.compare entry.key key in
+          let cmp = Int64.unsigned_compare entry.key key in
           if cmp < 0
           then binary_search (mid + 1) high
           else if cmp > 0
@@ -102,12 +102,7 @@ let probe (book : book option) (pos : Position.t) : (Move.t * int) list =
   match book with
   | None -> []
   | Some book ->
-    (* Get zobrist key, compute it if it's zero *)
-    let key =
-      let k = Position.key pos in
-      if k = 0L then Zobrist.compute pos else k
-    in
-    let entries = find_entries book key in
+    let entries = find_entries book (Zobrist.compute pos) in
     (* Decode moves and filter valid ones *)
     List.filter_map
       (fun (entry : Polyglot.entry) ->
@@ -127,6 +122,9 @@ let select_best (entries : (Move.t * int) list) : Move.t option =
     Some (fst (List.hd sorted)))
 ;;
 
+(** Self-seeded generator so book choices vary between runs *)
+let rng = lazy (Random.State.make_self_init ())
+
 (** Select random move weighted by popularity *)
 let select_random (entries : (Move.t * int) list) : Move.t option =
   if entries = []
@@ -136,11 +134,11 @@ let select_random (entries : (Move.t * int) list) : Move.t option =
     if total_weight = 0
     then (
       (* All weights are 0, pick uniformly *)
-      let idx = Random.int (List.length entries) in
+      let idx = Random.State.int (Lazy.force rng) (List.length entries) in
       Some (fst (List.nth entries idx)))
     else (
       (* Weighted random selection *)
-      let rand = Random.int total_weight in
+      let rand = Random.State.int (Lazy.force rng) total_weight in
       let rec select sum = function
         | [] -> None
         | (move, weight) :: rest ->

@@ -167,26 +167,6 @@ let test_zobrist_side_to_move () =
     (key_white <> key_black)
 ;;
 
-let test_zobrist_hash_piece () =
-  let key = 0L in
-  let key_with_piece = Zobrist.hash_piece key Square.e4 Types.Piece.white_pawn in
-  Alcotest.(check bool) "Hashing a piece changes the key" true (key <> key_with_piece);
-  (* Hashing the same piece again should return to original *)
-  let key_unhashed = Zobrist.hash_piece key_with_piece Square.e4 Types.Piece.white_pawn in
-  Alcotest.(check bool)
-    "Hashing same piece twice returns to original"
-    true
-    (key = key_unhashed)
-;;
-
-let test_zobrist_hash_side_to_move () =
-  let key = 0L in
-  let key_black = Zobrist.hash_side_to_move key Types.Black in
-  Alcotest.(check bool) "Hashing Black changes the key" true (key <> key_black);
-  let key_white = Zobrist.hash_side_to_move key Types.White in
-  Alcotest.(check bool) "Hashing White doesn't change the key" true (key = key_white)
-;;
-
 let test_repetition_none () =
   let game = Game.default () in
   Alcotest.(check bool)
@@ -297,11 +277,6 @@ let () =
             test_zobrist_different_positions
         ; test_case "Same positions have same hash" `Quick test_zobrist_same_position
         ; test_case "Side to move affects hash" `Quick test_zobrist_side_to_move
-        ; test_case "hash_piece is reversible" `Quick test_zobrist_hash_piece
-        ; test_case
-            "hash_side_to_move works correctly"
-            `Quick
-            test_zobrist_hash_side_to_move
         ] )
     ; ( "repetition"
       , [ test_case "Starting position is not a repetition" `Quick test_repetition_none

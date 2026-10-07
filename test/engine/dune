@@ -103,3 +103,7 @@
 (test
  (name test_pgn_parser)
  (libraries chessml alcotest))
+
+(test
+ (name test_polyglot)
+ (libraries chessml alcotest))
