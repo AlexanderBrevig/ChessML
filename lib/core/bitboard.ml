@@ -11,8 +11,26 @@ open Types
 
 type t = Int64.t
 
-(* External C function for fast LSB finding using CPU intrinsics *)
-external find_lsb_fast : Int64.t -> int = "caml_bitboard_ctz"
+(* Bit scans and popcount via compiler intrinsics (bitboard_stubs.c), unboxed
+   and allocation free in native code. All return -1 for an empty bitboard
+   where a square is expected. *)
+external find_lsb_fast
+  :  (Int64.t[@unboxed])
+  -> (int[@untagged])
+  = "caml_bitboard_ctz" "caml_bitboard_ctz_unboxed"
+[@@noalloc]
+
+external find_msb_fast
+  :  (Int64.t[@unboxed])
+  -> (int[@untagged])
+  = "caml_bitboard_msb" "caml_bitboard_msb_unboxed"
+[@@noalloc]
+
+external popcount
+  :  (Int64.t[@unboxed])
+  -> (int[@untagged])
+  = "caml_bitboard_popcount" "caml_bitboard_popcount_unboxed"
+[@@noalloc]
 
 let empty = 0L
 let full = Int64.minus_one
@@ -82,13 +100,7 @@ let toggle bb sq = Int64.logxor bb (of_square sq) [@@inline always]
 let contains bb sq = Int64.logand bb (of_square sq) <> 0L [@@inline always]
 let is_empty bb = bb = 0L [@@inline always]
 let is_not_empty bb = bb <> 0L [@@inline always]
-
-let population bb =
-  let rec count acc n =
-    if n = 0L then acc else count (acc + 1) (Int64.logand n (Int64.sub n 1L))
-  in
-  count 0 bb
-;;
+let population bb = popcount bb [@@inline always]
 
 let lsb bb =
   if bb = 0L
@@ -98,19 +110,7 @@ let lsb bb =
     if pos = -1 then None else Some pos)
 ;;
 
-let msb bb =
-  if bb = 0L
-  then None
-  else (
-    let rec find_msb i =
-      if i < 0
-      then None
-      else if Int64.logand bb (Int64.shift_left 1L i) <> 0L
-      then Some i
-      else find_msb (i - 1)
-    in
-    find_msb 63)
-;;
+let msb bb = if bb = 0L then None else Some (find_msb_fast bb)
 
 (* Pop LSB: returns (position option, new bitboard)
  * Note: This function still allocates for API compatibility.

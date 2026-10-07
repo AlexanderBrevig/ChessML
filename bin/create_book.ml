@@ -5,64 +5,27 @@ open Chessml
 (** Configuration *)
 let max_ply = 20 (* Maximum opening depth in half-moves *)
 
-let min_game_count = 3 (* Minimum games to include a position *)
+let min_game_count = 3 (* Minimum games to include a move *)
+let min_share = 0.05 (* Minimum share of the position's games to include a move *)
 let openings_dir = "openings" (* Directory containing PGN files *)
 
-(** Hash table to accumulate move statistics: (zobrist_key, move) -> count *)
+(** Move statistics keyed by (Polyglot key, Polyglot-encoded move) *)
 module MoveKey = struct
-  type t = int64 * Move.t
+  type t = int64 * int
 
-  let equal (k1, m1) (k2, m2) =
-    Int64.equal k1 k2
-    && Move.from m1 = Move.from m2
-    && Move.to_square m1 = Move.to_square m2
-  ;;
-
-  let hash (k, m) = Hashtbl.hash (Int64.to_int k, Move.from m, Move.to_square m)
+  let equal (k1, m1) (k2, m2) = Int64.equal k1 k2 && m1 = m2
+  let hash = Hashtbl.hash
 end
 
 module MoveStats = Hashtbl.Make (MoveKey)
 
-(** Write hash table to binary file *)
-let write_stats_to_file filename stats =
-  let oc = open_out_bin filename in
+(** Add the counts of [local] into [global] *)
+let merge_stats global local =
   MoveStats.iter
-    (fun (zobrist, move) count ->
-       output_binary_int oc (Int64.to_int (Int64.shift_right zobrist 32));
-       output_binary_int oc (Int64.to_int zobrist);
-       output_byte oc (Move.from move);
-       output_byte oc (Move.to_square move);
-       output_binary_int oc count)
-    stats;
-  close_out oc
-;;
-
-(** Read stats from binary file and merge into hash table *)
-let merge_stats_from_file filename stats =
-  let ic = open_in_bin filename in
-  try
-    while true do
-      let high = input_binary_int ic in
-      let low = input_binary_int ic in
-      let zobrist =
-        Int64.logor (Int64.shift_left (Int64.of_int high) 32) (Int64.of_int low)
-      in
-      let from_sq = input_byte ic in
-      let to_sq = input_byte ic in
-      let count = input_binary_int ic in
-      (* Create a placeholder move - we only care about from/to for the key *)
-      let move = Move.make from_sq to_sq Move.Quiet in
-      let key = zobrist, move in
-      let old =
-        try MoveStats.find stats key with
-        | Not_found -> 0
-      in
-      MoveStats.replace stats key (old + count)
-    done
-  with
-  | End_of_file ->
-    close_in ic;
-    Sys.remove filename
+    (fun key count ->
+       let old = Option.value ~default:0 (MoveStats.find_opt global key) in
+       MoveStats.replace global key (old + count))
+    local
 ;;
 
 let move_counts = MoveStats.create 100000
@@ -75,41 +38,20 @@ let get_pgn_files dir =
   |> List.map (fun f -> Filename.concat dir f)
 ;;
 
-(** Process a single game and add moves to local statistics *)
-let process_game_debug = ref true
-
+(** Count the first [max_ply] moves of a game; returns the number of plies counted *)
 let process_game local_stats game =
   let rec process_moves pos move_list ply_count =
-    if ply_count >= max_ply
-    then ply_count (* Return number of plies processed *)
-    else (
-      match move_list with
-      | [] -> ply_count (* Return number of plies processed *)
-      | mv :: rest ->
-        let key = Zobrist.compute pos in
-        let move_key = key, mv in
-        let current_count =
-          try MoveStats.find local_stats move_key with
-          | Not_found -> 0
-        in
-        MoveStats.replace local_stats move_key (current_count + 1);
-        let new_pos = Position.make_move pos mv in
-        process_moves new_pos rest (ply_count + 1))
+    match move_list with
+    | mv :: rest when ply_count < max_ply ->
+      let move_key = Position.key pos, Polyglot.encode_move mv in
+      let current_count =
+        Option.value ~default:0 (MoveStats.find_opt local_stats move_key)
+      in
+      MoveStats.replace local_stats move_key (current_count + 1);
+      process_moves (Position.make_move pos mv) rest (ply_count + 1)
+    | _ -> ply_count
   in
-  let moves = Pgn_parser.game_to_moves game in
-  let san_move_count = List.length game.Pgn_parser.moves in
-  let parsed_move_count = List.length moves in
-  if !process_game_debug && san_move_count > 0
-  then (
-    Printf.eprintf
-      "Debug: SAN moves (%d): %s\n"
-      san_move_count
-      (String.concat ", " (List.filteri (fun i _ -> i < 5) game.Pgn_parser.moves));
-    Printf.eprintf "Debug: Parsed moves (%d)\n" parsed_move_count;
-    process_game_debug := false);
-  let start_pos = Position.default () in
-  let plies_processed = process_moves start_pos moves 0 in
-  plies_processed
+  process_moves (Pgn_parser.start_position game) (Pgn_parser.game_to_moves game) 0
 ;;
 
 (** Process all PGN files and build statistics *)
@@ -126,7 +68,6 @@ let process_all_files files =
   let completed = Atomic.make 0 in
   let total_games = Atomic.make 0 in
   let total_plies = Atomic.make 0 in
-  let chunk_num = ref 0 in
   (* Process files in chunks to manage memory *)
   let chunk_size = num_domains * 8 in
   let rec process_chunks remaining =
@@ -141,8 +82,7 @@ let process_all_files files =
         in
         take chunk_size [] remaining
       in
-      chunk_num := !chunk_num + 1;
-      let temp_files =
+      let chunk_stats =
         Task.run pool (fun () ->
           List.map
             (fun filename ->
@@ -166,18 +106,11 @@ let process_all_files files =
                    (List.length games)
                    !file_plies;
                  flush stdout;
-                 (* Write to temp file and return filename *)
-                 let temp_file =
-                   Printf.sprintf "/tmp/chessml_book_%d_%d.tmp" !chunk_num count
-                 in
-                 write_stats_to_file temp_file local_stats;
-                 MoveStats.clear local_stats;
-                 temp_file))
+                 local_stats))
             chunk
           |> List.map (Task.await pool))
       in
-      (* Merge temp files into global stats *)
-      List.iter (fun temp_file -> merge_stats_from_file temp_file move_counts) temp_files;
+      List.iter (merge_stats move_counts) chunk_stats;
       Gc.minor ();
       process_chunks rest
   in
@@ -193,34 +126,32 @@ let process_all_files files =
 
 (** Convert statistics to book entries with weights *)
 let create_book_entries () =
-  (* First pass: find max count for normalization context *)
-  let max_count = ref 0 in
-  MoveStats.iter (fun _ count -> max_count := max !max_count count) move_counts;
-  Printf.printf "   • Max game count for any move: %d\n" !max_count;
-  let entries = ref [] in
+  (* Group move counts by position *)
+  let by_position = Hashtbl.create 1_000_000 in
   MoveStats.iter
-    (fun (zobrist, move) count ->
-       if count >= min_game_count
-       then (
-         (* Logarithmic scaling to better use the 16-bit range:
-            - Maps counts from [min_game_count, max_count] to [1, 65535]
-            - Uses log scale so differences are preserved even for high counts
-            - Formula: weight = 1 + (65534 * log(count) / log(max_count))
-            
-            Example with max_count = 100,000:
-            - count = 3       -> weight ≈ 5,263   (low frequency)
-            - count = 100     -> weight ≈ 26,314  (moderate)
-            - count = 1,000   -> weight ≈ 39,471  (high)
-            - count = 10,000  -> weight ≈ 52,629  (very high)
-            - count = 100,000 -> weight = 65,535  (maximum)
-         *)
-         let log_count = log (float_of_int count) in
-         let log_max = log (float_of_int !max_count) in
-         let normalized = log_count /. log_max in
-         let weight = 1 + int_of_float (65534.0 *. normalized) in
-         entries := (zobrist, move, weight) :: !entries))
+    (fun (key, move) count ->
+       let moves = Option.value ~default:[] (Hashtbl.find_opt by_position key) in
+       Hashtbl.replace by_position key ((move, count) :: moves))
     move_counts;
-  !entries
+  (* Weights are linear in the game count and relative to the most played move in
+     the position (Polyglot weights only matter within a position). Moves played in
+     fewer than [min_share] of the position's games, or fewer than [min_game_count]
+     games, are dropped so rare sidelines are not chosen at random. *)
+  Hashtbl.fold
+    (fun key moves entries ->
+       let total = List.fold_left (fun acc (_, c) -> acc + c) 0 moves in
+       let best = List.fold_left (fun acc (_, c) -> max acc c) 0 moves in
+       List.fold_left
+         (fun entries (move, count) ->
+            if
+              count >= min_game_count
+              && float_of_int count >= min_share *. float_of_int total
+            then (key, move, max 1 (count * 65535 / best)) :: entries
+            else entries)
+         entries
+         moves)
+    by_position
+    []
 ;;
 
 let () =
@@ -239,22 +170,21 @@ let () =
   let entries = create_book_entries () in
   Printf.printf "   • %d unique position-move combinations\n" (List.length entries);
   let unique_positions =
-    List.map (fun (k, _, _) -> k) entries |> List.sort_uniq Int64.compare |> List.length
+    List.map (fun (k, _, _) -> k) entries
+    |> List.sort_uniq Int64.unsigned_compare
+    |> List.length
   in
   Printf.printf "   • %d unique positions\n\n" unique_positions;
-  (* Sort entries by zobrist key (required for binary search) *)
+  (* Polyglot books are sorted by key as an unsigned integer (binary search) *)
   Printf.printf "💾 Writing book.bin...\n";
   let sorted_entries =
-    List.sort (fun (k1, _, _) (k2, _, _) -> Int64.compare k1 k2) entries
+    List.sort (fun (k1, _, _) (k2, _, _) -> Int64.unsigned_compare k1 k2) entries
   in
   (* Write to file *)
   let oc = open_out_bin "book.bin" in
   List.iter
     (fun (key, move, weight) ->
-       let entry =
-         Polyglot.make_entry key (Move.from move) (Move.to_square move) weight
-       in
-       Polyglot.write_entry oc entry)
+       Polyglot.write_entry oc { Polyglot.key; move; weight; learn = 0 })
     sorted_entries;
   close_out oc;
   let file_size = List.length sorted_entries * 16 in

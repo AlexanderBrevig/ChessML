@@ -13,8 +13,6 @@ type t
 val fen_startpos : string
 val empty_board : unit -> board
 val piece_at : t -> Square.t -> Types.piece option
-val set_piece : Square.t -> Types.piece -> t -> t
-val clear_square : Square.t -> t -> t
 val side_to_move : t -> Types.color
 val ep_square : t -> Square.t option
 val halfmove : t -> int
@@ -24,13 +22,25 @@ val castling_rights : t -> castling_rights array
 val white_king_sq : t -> Square.t
 val black_king_sq : t -> Square.t
 val occupied : t -> Bitboard.t
+
+(** Polyglot Zobrist key, maintained incrementally *)
 val key : t -> Int64.t
+
+(** Key computed from scratch; always equal to [key] (for tests) *)
+val compute_key : t -> Int64.t
 
 (** Piece bitboard accessors *)
 val get_pieces : t -> Types.color -> Types.piece_kind -> Bitboard.t
 
 val get_color_pieces : t -> Types.color -> Bitboard.t
 val count_non_pawn_material : t -> Types.color -> int
+
+(** Material of a color in centipawns (kings excluded) *)
+val material : t -> Types.color -> int
+
+(** Dead position by material: bare kings, one minor, or same-colored bishops only *)
+val has_insufficient_material : t -> bool
+
 val make_move : t -> Move.t -> t
 val make_null_move : t -> t
 val of_fen : string -> t

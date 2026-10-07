@@ -1,9 +1,9 @@
 (library
  (name chessml_engine)
  (public_name chessml.engine)
- (flags
-  (:standard -w -32-69))
- (libraries chessml.core unix threads.posix str)
+ (instrumentation
+  (backend bisect_ppx))
+ (libraries chessml.core unix threads.posix)
  (modules
   config
   killers
@@ -12,16 +12,14 @@
   pawn_cache
   piece_tables
   see
+  score
   search_common
-  concurrent_tt
-  parallel_search
-  root_split_search
   position
   magic
   movegen
+  polyglot_random
   zobrist
   game
-  eval_helpers
   eval_pawn_structure
   eval_pieces
   eval_king_safety

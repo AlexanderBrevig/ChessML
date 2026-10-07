@@ -65,7 +65,7 @@ Binary file with 16-byte entries:
 [2 bytes: weight]
 [4 bytes: learn data]
 
-Entries are sorted by hash for binary search.
+Entries are sorted by hash, compared as an **unsigned** 64-bit integer, for binary search.
 ```
 
 ### Position Hash
@@ -90,32 +90,35 @@ let polyglot_hash pos =
   let castling = polyglot_castling_index pos in
   hash := Int64.logxor !hash polyglot_castling_random.(castling);
 
-  (* XOR in en passant *)
+  (* XOR in en passant, but only if a pawn of the side to move can capture *)
   (match en_passant_square pos with
-   | Some sq ->
+   | Some sq when ep_capture_possible pos sq ->
      let file = sq mod 8 in
      hash := Int64.logxor !hash polyglot_ep_random.(file)
-   | None -> ());
+   | _ -> ());
 
-  (* XOR in side to move (if black) *)
-  if side_to_move pos = Black then
+  (* XOR in the turn key when WHITE is to move *)
+  if side_to_move pos = White then
     hash := Int64.logxor !hash polyglot_side_random;
 
   !hash
 ```
 
-**Important:** Polyglot hashing differs from your internal Zobrist hashing. You need to implement both!
+**Important:** the random numbers must be the 781 values from the Polyglot specification. ChessML simply uses the Polyglot scheme as its internal Zobrist hash (`lib/engine/polyglot_random.ml`), so `Position.key` is the book key. Check your implementation against the published test keys, e.g. the starting position hashes to `0x463b96181691fc9c`.
 
 ### Move Encoding
 
 Moves are encoded in 16 bits:
 
 ```
-Bits 0-5:   From square (0-63)
-Bits 6-11:  To square (0-63)
+Bits 0-5:   To square (0-63)
+Bits 6-11:  From square (0-63)
 Bits 12-14: Promotion piece (0=none, 1=knight, 2=bishop, 3=rook, 4=queen)
 Bit 15:     Unused
 ```
+
+Castling is encoded as the king capturing its own rook: white O-O is `e1h1`, not
+`e1g1`.
 
 ```ocaml
 let encode_move move =
@@ -129,11 +132,11 @@ let encode_move move =
     | Some Queen -> 4
     | _ -> 0
   in
-  from lor (to_ lsl 6) lor (promo lsl 12)
+  to_ lor (from lsl 6) lor (promo lsl 12)
 
 let decode_move encoded pos =
-  let from = encoded land 0x3F in
-  let to_ = (encoded lsr 6) land 0x3F in
+  let to_ = encoded land 0x3F in
+  let from = (encoded lsr 6) land 0x3F in
   let promo_code = (encoded lsr 12) land 0x7 in
   let promotion = match promo_code with
     | 1 -> Some Knight
@@ -279,7 +282,7 @@ let write_book filename entries =
   let sorted =
     Hashtbl.to_seq entries
     |> List.of_seq
-    |> List.sort (fun ((h1, _), _) ((h2, _), _) -> compare h1 h2)
+    |> List.sort (fun ((h1, _), _) ((h2, _), _) -> Int64.unsigned_compare h1 h2)
   in
 
   let oc = open_out_bin filename in
@@ -370,8 +373,8 @@ let find_book () =
 ### 1. Wrong Zobrist Hashing
 
 ```ocaml
-(* Wrong: Use your internal hash *)
-let hash = Zobrist.compute pos in
+(* Wrong: an internal hash with your own random numbers *)
+let hash = my_zobrist pos in
 
 (* Correct: Use Polyglot hash *)
 let hash = polyglot_hash pos in

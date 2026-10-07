@@ -74,6 +74,8 @@ let en_passant_keys = Array.init 8 (fun _ -> Random.int64 Int64.max_int)
 
 > **Important:** Use a **fixed seed** so the random numbers are the same every time the program runs. This ensures positions hash consistently across sessions.
 
+> ChessML goes one step further and uses the fixed table from the Polyglot opening book format (`lib/engine/polyglot_random.ml`), so the position key doubles as the book key. Position keeps it up to date incrementally in `make_move`.
+
 ## Computing Initial Hash
 
 For a starting position, XOR together all components:
@@ -253,7 +255,7 @@ let test_zobrist () =
   let pos = Position.from_fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" in
 
   (* Compute full hash *)
-  let hash1 = Zobrist.compute pos in
+  let hash1 = Position.key pos in
 
   (* Make move and update incrementally *)
   let move = Move.make ~from:12 ~to_:28 ~piece:{color=White; kind=Pawn} in
@@ -261,7 +263,7 @@ let test_zobrist () =
   let hash2 = Position.hash pos2 in
 
   (* Recompute from scratch *)
-  let hash3 = Zobrist.compute pos2 in
+  let hash3 = Position.key pos2 in
 
   (* Should match! *)
   assert (hash2 = hash3)

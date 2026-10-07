@@ -1,21 +1,15 @@
-(** Pawn structure evaluation cache *)
+(** Pawn structure evaluation cache, keyed by the exact pawn bitboards *)
 
 type t
 
-(** Compute pawn structure hash from pawn bitboards *)
-val compute_pawn_hash : Int64.t -> Int64.t -> Int64.t
-
-(** Create a new pawn cache with given size *)
+(** Create a new pawn cache; size is rounded up to a power of two *)
 val create : int -> t
 
-(** Create default cache (64K entries) *)
-val create_default : unit -> t
+(** Probe cache for a pawn structure. Scores are white minus black. *)
+val probe : t -> white_pawns:Int64.t -> black_pawns:Int64.t -> int option
 
-(** Probe cache for a pawn structure evaluation *)
-val probe : t -> Int64.t -> int option
-
-(** Store pawn structure evaluation in cache *)
-val store : t -> Int64.t -> int -> unit
+(** Store pawn structure score (white minus black) *)
+val store : t -> white_pawns:Int64.t -> black_pawns:Int64.t -> int -> unit
 
 (** Clear cache *)
 val clear : t -> unit
@@ -28,6 +22,3 @@ val get_global : unit -> t
 
 (** Clear global pawn cache *)
 val clear_global : unit -> unit
-
-(** Get global cache statistics *)
-val global_stats : unit -> int * int * float

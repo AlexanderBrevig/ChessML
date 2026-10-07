@@ -1,11 +1,11 @@
 ;; ============================================================================
-;; Protocol Tests - UCI and XBoard protocol implementations
+;; Protocol Tests - UCI and XBoard sessions driven line by line
 ;; ============================================================================
 
 (test
  (name test_uci)
- (libraries chessml))
+ (libraries chessml alcotest unix threads.posix))
 
 (test
  (name test_xboard)
- (libraries chessml))
+ (libraries chessml alcotest str))

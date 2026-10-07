@@ -21,7 +21,7 @@ Learn with me here: https://alexanderbrevig.github.io/ChessML/
 - 🧠**Alpha-Beta Search**: Minimax search with alpha-beta pruning
 - 💾**Transposition Tables**: Position caching for faster search
 - 📚**Opening Book**: Support for Polyglot opening books generated from PGN
-- 🏗️**Book Generator**: 1M+ position-move combinations from 9M+ games
+- 🏗️**Book Generator**: about 1.5M position-move combinations from 4.2M games
 - 🖥️**UCI Protocol**: Compatible with chess GUIs like Arena and ChessBase
 - 🎮**XBoard Protocol**: Play via the xboard/winboard interface
 
@@ -61,27 +61,31 @@ dune build --profile=release
 ### Opening Book Creation and Setup
 
 > ![WARN]
-> You will need 4.5 GiB RAM to run this.
-> It takes ~15 minutes to complete the process and generates 18MB of data.
+> You will need about 4 GiB RAM and 3.5 GiB of disk for the downloaded PGNs.
+> It takes about 10 minutes in total and generates a 24MB book.
 
 ```bash
 ./scripts/download_openings.fish # about 6 minutes and 30 seconds
-dune build --profile=release && CHESSML_PARALLEL=8 ./_build/default/bin/create_book.exe # about 8 minutes
+dune build --profile=release && CHESSML_PARALLEL=12 ./_build/default/bin/create_book.exe # about 4 minutes
 ```
 
-You should the see something like
+The book uses the standard Polyglot format, so third-party Polyglot `.bin` books work too. Books built by versions before the switch to Polyglot keys must be regenerated.
+
+You should then see something like
 
 ```
-📊 Processed 9065131 games total (avg 7.9 plies per game)
+📊 Processed 4193345 games total (avg 20.0 plies per game)
 
 📝 Building book entries (min 3 games)...
-   • 1113046 unique position-move combinations
-   • 682561 unique positions
+   • 1473437 unique position-move combinations
+   • 996306 unique positions
 
 💾 Writing book.bin...
-   • 17808736 bytes
-   • 1113046 moves
+   • 23574992 bytes
+   • 1473437 moves
 ```
+
+The first 20 plies of every game are counted. A move enters the book if it was played in at least 3 games and in at least 5% of the games reaching that position; its weight is proportional to how often it was played. From the starting position the book plays 1.e4 57%, 1.d4 28%, 1.c4 8% and 1.Nf3 6% of the time.
 
 ChessML will automatically look for the opening book in the following locations (in order):
 
@@ -112,10 +116,10 @@ ChessML uses [Just](https://github.com/casey/just) as a command runner see `just
 # Build the project
 just
 
-# Run all tests (includes quick search tests ~11s)
+# Run all tests (a few seconds)
 just test
 
-# Run deep search validation (~2+ minutes)
+# Run the search tests including the slow cases
 just test-search
 
 # Format code
@@ -136,7 +140,7 @@ dune build
 # Release build (optimized - use for performance testing!)
 dune build --profile=release
 
-# Run all tests (quick by default ~11s)
+# Run all tests
 dune runtest
 
 # Run quick search tests only
@@ -207,14 +211,16 @@ ChessML uses a comprehensive test suite with both quick and thorough validation:
 - **Core Tests**: Data structures, move generation, position handling
 - **Engine Tests**: Evaluation, game logic, zobrist hashing
 - **Search Tests**:
-  - **Quick** (~10s): Basic functionality, shallow search validation
-  - **Slow** (~2+ min): Deep search validation, performance analysis
+  - **Quick**: mates, tactics, search behavior (run by `dune runtest`)
+  - **Slow**: deeper searches (`just test-search`)
+- **Perft**: move generation against published node counts
+- **Protocol Tests**: UCI and XBoard sessions driven line by line
 - **Integration Tests**: End-to-end functionality
 
 ### Running Tests
 
 ```bash
-# Quick development feedback (~11s total)
+# Quick development feedback (a few seconds)
 dune runtest
 # or
 just test
@@ -272,7 +278,19 @@ ChessML is licensed under the [MIT License](LICENSE) - see the [LICENSE](https:/
 - Figure out if I can publish the book.bin generated from PGNMentor
 - Tune evaluation parameters
 - Add endgame tablebase support
-- Improve parallel search performance
+- Lazy SMP parallel search
+- Endgame knowledge (KQK, KRK, KBNK mating guidance, tapered evaluation)
+
+## 📈 Strength
+
+A rough estimate is **about 1850-2000** on Stockfish's `UCI_Elo` scale, from 200 games at 30s+0.3s against Stockfish 18 limited to 1320, 1600, 1900 and 2200 Elo (single thread, with the opening book). The error bars are large (+-150 per run) and Stockfish's limited mode is calibrated at longer time controls, so treat it as a ballpark, not a FIDE rating.
+
+```sh
+cutechess-cli -tournament gauntlet \
+   -engine name=ChessML cmd=./_build/default/bin/chessml_uci.exe proto=uci \
+   -engine name=SF1900 cmd=stockfish proto=uci option.UCI_LimitStrength=true option.UCI_Elo=1900 \
+   -each tc=30+0.3 -games 2 -rounds 10 -concurrency 8
+```
 
 ### Running Engine Matches
 

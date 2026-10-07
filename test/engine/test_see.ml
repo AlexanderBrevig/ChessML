@@ -19,56 +19,56 @@ let make_move from_str to_str =
 (** Basic capture tests *)
 
 let simple_capture_wins () =
-  (* White pawn d4 takes black pawn e5: 100cp base + 25cp positional = 125cp *)
+  (* White pawn d4 takes undefended black pawn e5: wins a pawn *)
   see_test
     "White pawn takes undefended pawn"
     "8/8/8/4p3/3P4/8/8/8 w - - 0 1"
     (make_move "d4" "e5")
-    125 (* Includes positional bonus for pawn moving to e5 *)
+    100
     ()
 ;;
 
 let simple_capture_equal () =
-  (* White pawn takes black pawn defended by pawn: ~0cp (equal trade with small positional diff) *)
+  (* White pawn takes black pawn defended by pawn: equal trade *)
   see_test
     "White pawn takes pawn defended by pawn"
     "8/8/5p2/4p3/3P4/8/8/8 w - - 0 1"
     (make_move "d4" "e5")
-    5 (* Small positional difference *)
+    0
     ()
 ;;
 
 let simple_capture_loses () =
-  (* White knight takes pawn defended by pawn: -215cp loss (includes positional values) *)
+  (* White knight takes pawn defended by pawn: +100 - 320 *)
   see_test
     "Knight takes pawn defended by pawn (bad)"
     "8/8/5p2/4p3/8/3N4/8/8 w - - 0 1"
     (make_move "d3" "e5")
-    (-215) (* Knight loss with positional adjustments *)
+    (-220)
     ()
 ;;
 
 (** Multiple attackers/defenders *)
 
 let multiple_attackers_wins () =
-  (* White takes queen with pawn, black recaptures with knight,
-     white recaptures with knight: includes positional adjustments *)
+  (* White pawn takes queen, black knight recaptures; the d3 knight
+     does not attack d5: +900 - 100 *)
   see_test
     "Multiple attackers - favorable"
     "8/8/5n2/3q4/4P3/3N4/8/8 w - - 0 1" (* Black knight on f6, not e6 *)
     (make_move "e4" "d5")
-    785 (* Pawn takes queen with positional values *)
+    800
     ()
 ;;
 
 let multiple_defenders () =
   (* Rook takes pawn defended by rook and bishop *)
-  (* Rook takes pawn, bishop takes rook - with positional values *)
+  (* Rook takes pawn, bishop takes rook: +100 - 500 *)
   see_test
     "Multiple defenders - bishop and rook"
     "8/8/3b4/3rpR2/8/8/8/8 w - - 0 1"
     (make_move "f5" "e5")
-    (-375) (* We win pawn but lose rook, with positional adjustments *)
+    (-400)
     ()
 ;;
 
@@ -77,12 +77,22 @@ let multiple_defenders () =
 let xray_attack () =
   (* Pawn takes pawn defended by queen, but rook x-rays through
      Queen CAN recapture but shouldn't (would lose queen to rook)
-     So black stands pat, white keeps pawn: +125cp (with positional) *)
+     So black stands pat, white keeps the pawn *)
   see_test
     "X-ray attack through captured piece"
     "8/8/8/3qp3/3PR3/8/8/8 w - - 0 1"
     (make_move "d4" "e5")
-    125 (* Black queen shouldn't recapture, with positional bonus *)
+    100
+    ()
+;;
+
+let rook_battery_xray () =
+  (* Re2xe5, Re8xe5, Re1xe5: the e1 rook only attacks e5 once e2 has moved *)
+  see_test
+    "Rook battery x-ray"
+    "4r3/8/8/4p3/8/8/4R3/4R1K1 w - - 0 1"
+    (make_move "e2" "e5")
+    100
     ()
 ;;
 
@@ -90,12 +100,12 @@ let xray_attack () =
 
 let lva_ordering () =
   (* Both rook and queen can recapture - should use least valuable (rook) *)
-  (* Queen takes pawn, black rook recaptures (not queen): with positional values *)
+  (* Queen takes pawn, black rook recaptures (not queen): +100 - 900 *)
   see_test
     "LVA: Use rook not queen for recapture"
     "4q3/8/4r3/4p3/8/8/4Q3/8 w - - 0 1"
     (make_move "e2" "e5")
-    (-780) (* Queen takes pawn, black uses rook (LVA), with positional adjustments *)
+    (-800)
     ()
 ;;
 
@@ -115,12 +125,12 @@ let pawn_promotion_capture () =
 (** En passant *)
 
 let en_passant_capture () =
-  (* En passant is a special pawn capture - includes positional bonus *)
+  (* En passant is a special pawn capture *)
   see_test
     "En passant capture (undefended)"
     "8/8/8/3pP3/8/8/8/8 w - d6 0 1"
     (Move.make (Square.of_uci "e5") (Square.of_uci "d6") Move.EnPassantCapture)
-    125 (* Win pawn with positional bonus *)
+    100
     ()
 ;;
 
@@ -137,22 +147,22 @@ let complex_exchange () =
 *)
 
 let dont_capture_defended_queen () =
-  (* Knight takes queen defended by pawn: with positional adjustments *)
+  (* Knight takes queen defended by pawn: +900 - 320 *)
   see_test
     "Capture defended queen (still wins)"
     "8/8/2p5/3q4/8/3N4/8/8 w - - 0 1"
     (make_move "d3" "d5")
-    565 (* Win queen, lose knight, with positional values *)
+    580
     ()
 ;;
 
 let protected_piece_chain () =
-  (* Bishop takes knight defended by pawn: with positional values ~0cp *)
+  (* Bishop takes knight defended by pawn: +320 - 330 *)
   see_test
     "Protected piece chain"
     "8/8/2p5/3n4/4B3/8/8/8 w - - 0 1"
     (make_move "e4" "d5")
-    0 (* Bxn, pxB: roughly equal with positional adjustments *)
+    (-10)
     ()
 ;;
 
@@ -195,6 +205,7 @@ let () =
         ] )
     ; ( "tactical"
       , [ test_case "X-ray attacks" `Quick xray_attack
+        ; test_case "Rook battery x-ray" `Quick rook_battery_xray
         ; test_case "Capture defended queen" `Quick dont_capture_defended_queen
         ; test_case "Protected piece chain" `Quick protected_piece_chain
         ] )

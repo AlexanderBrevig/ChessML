@@ -2,7 +2,7 @@
     
     A complete chess engine implementation featuring bitboard move generation,
     magic bitboards for sliding pieces, alpha-beta search with modern pruning
-    techniques, parallel search support, and UCI/XBoard protocol implementations.
+    techniques, and UCI/XBoard protocol implementations.
     
     Modules: Core (types, bitboards), Engine (search, eval), Protocols (UCI, XBoard)
 *)
@@ -37,10 +37,8 @@ module History = Engine.History
 module Pawn_cache = Engine.Pawn_cache
 module See = Engine.See
 module Piece_tables = Engine.Piece_tables
-module Concurrent_tt = Engine.Concurrent_tt
-module Parallel_search = Engine.Parallel_search
-module Root_split_search = Engine.Root_split_search
 module Search_common = Engine.Search_common
+module Score = Engine.Score
 module Polyglot = Engine.Polyglot
 module Opening_book = Engine.Opening_book
 module Pgn_parser = Engine.Pgn_parser

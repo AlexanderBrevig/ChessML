@@ -6,19 +6,22 @@ let () =
   Printf.printf "=== Polyglot Format Demo ===\n\n";
   (* Example 1: Encode a move *)
   Printf.printf "1. Move Encoding:\n";
-  let from_sq = Square.e2 in
-  let to_sq = Square.e4 in
-  let encoded = Polyglot.encode_move from_sq to_sq 0 in
+  let move_of str =
+    match Game.find_move (Game.default ()) str with
+    | Some mv -> mv
+    | None -> failwith str
+  in
+  let encoded = Polyglot.encode_move (move_of "e2e4") in
   Printf.printf "   e2e4 encoded as: 0x%04x\n" encoded;
   Printf.printf
-    "   Binary: from=%d to=%d\n\n"
+    "   Binary: to=%d from=%d\n\n"
     (encoded land 0x3F)
     ((encoded lsr 6) land 0x3F);
   (* Example 2: Create and write an entry *)
   Printf.printf "2. Creating Book Entry:\n";
   let pos = Position.default () in
-  let key = Zobrist.compute pos in
-  let entry = Polyglot.make_entry key Square.e2 Square.e4 5000 in
+  let key = Position.key pos in
+  let entry = Polyglot.make_entry key (move_of "e2e4") 5000 in
   Printf.printf "   Zobrist key: 0x%Lx\n" entry.Polyglot.key;
   Printf.printf "   Move: 0x%04x\n" entry.Polyglot.move;
   Printf.printf "   Weight: %d\n\n" entry.Polyglot.weight;
@@ -62,16 +65,18 @@ let () =
   let book_file = Filename.temp_file "mini_book" ".bin" in
   let oc = open_out_bin book_file in
   (* Add e4, d4, Nf3 for starting position *)
-  let start_key = Zobrist.compute (Position.default ()) in
+  let start_key = Position.key (Position.default ()) in
   let entries =
-    [ Polyglot.make_entry start_key Square.e2 Square.e4 10000
-    ; Polyglot.make_entry start_key Square.d2 Square.d4 8000
-    ; Polyglot.make_entry start_key Square.g1 Square.f3 4000
+    [ Polyglot.make_entry start_key (move_of "e2e4") 10000
+    ; Polyglot.make_entry start_key (move_of "d2d4") 8000
+    ; Polyglot.make_entry start_key (move_of "g1f3") 4000
     ]
   in
-  (* Sort by key (required for binary search) *)
+  (* Sort by key as unsigned (required for binary search) *)
   let sorted =
-    List.sort (fun e1 e2 -> Int64.compare e1.Polyglot.key e2.Polyglot.key) entries
+    List.sort
+      (fun e1 e2 -> Int64.unsigned_compare e1.Polyglot.key e2.Polyglot.key)
+      entries
   in
   List.iter (Polyglot.write_entry oc) sorted;
   close_out oc;

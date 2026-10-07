@@ -184,6 +184,56 @@ let test_parse_multiple_games () =
   Sys.remove test_pgn
 ;;
 
+let test_promotions () =
+  let pos = Position.of_fen "3r4/4P3/8/8/8/8/k7/7K w - - 0 1" in
+  let promo san = Option.map Chessml.Move.to_uci (Pgn_parser.parse_san_move pos san) in
+  Alcotest.(check (option string)) "e8=Q" (Some "e7e8q") (promo "e8=Q");
+  Alcotest.(check (option string)) "e8Q" (Some "e7e8q") (promo "e8Q");
+  Alcotest.(check (option string)) "e8=N+" (Some "e7e8n") (promo "e8=N+");
+  Alcotest.(check (option string)) "exd8=R" (Some "e7d8r") (promo "exd8=R")
+;;
+
+let test_movetext_features () =
+  let pgn =
+    {|[Event "A"]
+[Result "1-0"]
+
+1. e4 {a comment
+spanning lines} 1... e5 $1 2. Nf3 (2. f4 exf4 (2... d5) 3. Nf3) 2... Nc6
+3. Bb5 a6 ; rest of line comment
+4. O-O Be7 1-0
+
+[Event "B"]
+1. d4 d5 2. c4 *
+[Event "C"]
+[SetUp "1"]
+[FEN "8/4P3/8/8/8/8/k7/7K w - - 0 1"]
+1. e8=Q 1/2-1/2|}
+  in
+  match Pgn_parser.parse_string pgn with
+  | [ a; b; c ] ->
+    Alcotest.(check (list string))
+      "game A moves"
+      [ "e4"; "e5"; "Nf3"; "Nc6"; "Bb5"; "a6"; "O-O"; "Be7" ]
+      a.moves;
+    Alcotest.(check int) "game A resolves" 8 (List.length (Pgn_parser.game_to_moves a));
+    Alcotest.(check (option string)) "game A result" (Some "1-0") a.result;
+    Alcotest.(check (list string)) "game B moves" [ "d4"; "d5"; "c4" ] b.moves;
+    Alcotest.(check (option string)) "game B event" (Some "B") b.event;
+    Alcotest.(check int) "game C from FEN" 1 (List.length (Pgn_parser.game_to_moves c))
+  | games -> Alcotest.failf "expected 3 games, got %d" (List.length games)
+;;
+
+let test_missing_result () =
+  (* A game without a result token ends when the next game's tags start *)
+  match Pgn_parser.parse_string "[White \"A\"]\n1. e4 e5\n\n[White \"B\"]\n1. d4 *" with
+  | [ a; b ] ->
+    Alcotest.(check (option string)) "first white" (Some "A") a.white;
+    Alcotest.(check (list string)) "first moves" [ "e4"; "e5" ] a.moves;
+    Alcotest.(check (option string)) "second white" (Some "B") b.white
+  | games -> Alcotest.failf "expected 2 games, got %d" (List.length games)
+;;
+
 let () =
   let open Alcotest in
   run
@@ -203,6 +253,9 @@ let () =
     ; ( "file parsing"
       , [ test_case "Parse game from file" `Quick test_parse_game
         ; test_case "Parse multiple games" `Quick test_parse_multiple_games
+        ; test_case "Promotions" `Quick test_promotions
+        ; test_case "Comments, variations, NAGs, FEN" `Quick test_movetext_features
+        ; test_case "Missing result" `Quick test_missing_result
         ] )
     ]
 ;;

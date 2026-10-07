@@ -1,55 +1,6 @@
-(** Alpha-beta minimax search *)
+(** Iterative deepening principal variation search *)
 
 open Chessml_core
-
-(** Search result containing the best move and evaluation *)
-type search_result =
-  { best_move : Move.t option
-  ; score : int
-  ; nodes : int64 (* Number of nodes searched *)
-  ; depth : int
-  }
-
-(** Find the best move for the current position using alpha-beta search.
-    @param verbose Print search statistics to stderr (default: true)
-    @param max_time_ms Maximum time to search in milliseconds (optional)
-    @param game The current game state
-    @param depth Maximum search depth (in plies/half-moves)
-    @return Search result with best move and score *)
-val find_best_move : ?verbose:bool -> ?max_time_ms:int -> Game.t -> int -> search_result
-
-(** Alpha-beta search algorithm with transposition table.
-    @param pos Current position
-    @param depth Remaining depth to search
-    @param alpha Alpha value (best score for maximizing player)
-    @param beta Beta value (best score for minimizing player)
-    @param nodes Reference to node counter for tracking search statistics
-    @param prev_move Previous move (for countermove heuristic)
-    @return (score, best_move_option) *)
-val alphabeta
-  :  Position.t
-  -> int
-  -> int
-  -> int
-  -> int64 ref
-  -> Move.t option
-  -> int * Move.t option
-
-(** Quiescence search for captures and checks.
-    @param pos Current position
-    @param alpha Alpha value
-    @param beta Beta value  
-    @param nodes Reference to node counter
-    @param depth Current quiescence depth (optional, default 0)
-    @return (score, best_move_option) *)
-val quiescence
-  :  Position.t
-  -> int
-  -> int
-  -> int64 ref
-  -> ?depth:int
-  -> unit
-  -> int * Move.t option
 
 (** Transposition table entry types *)
 type tt_entry_type =
@@ -57,7 +8,7 @@ type tt_entry_type =
   | LowerBound
   | UpperBound
 
-(** Transposition table entry *)
+(** Transposition table entry; mate scores are stored relative to the node *)
 type tt_entry =
   { key : int64
   ; score : int
@@ -66,19 +17,64 @@ type tt_entry =
   ; entry_type : tt_entry_type
   }
 
-(** Transposition table operations *)
 module TranspositionTable : sig
   type t
 
-  (** Create a new transposition table with given size *)
+  (** Create a table with the given number of entries *)
   val create : int -> t
 
-  (** Store an entry in the transposition table *)
+  (** [store tt key depth score best_move entry_type] *)
   val store : t -> int64 -> int -> int -> Move.t option -> tt_entry_type -> unit
 
-  (** Lookup an entry in the transposition table *)
   val lookup : t -> int64 -> tt_entry option
-
-  (** Clear all entries from the transposition table *)
   val clear : t -> unit
+
+  (** Replace the table with an empty one of the given number of entries *)
+  val resize : t -> int -> unit
 end
+
+(** Search tables that persist between the moves of a game *)
+type state =
+  { tt : TranspositionTable.t
+  ; killers : Killers.killer_table
+  ; history : History.t
+  ; countermoves : Countermoves.t
+  }
+
+val create_state : ?hash_mb:int -> unit -> state
+
+(** State used when none is passed explicitly (protocols use this one) *)
+val default_state : state
+
+(** Clear all tables (start of a new game) *)
+val new_game : ?state:state -> unit -> unit
+
+(** Resize and clear the transposition table *)
+val set_hash_size_mb : ?state:state -> int -> unit
+
+(** Search result *)
+type search_result =
+  { best_move : Move.t option
+  ; score : int (** side to move's perspective; see {!Score} for mates *)
+  ; nodes : int64
+  ; depth : int (** last completed iteration *)
+  ; pv : Move.t list (** principal variation starting with [best_move] *)
+  }
+
+(** Find the best move with iterative deepening up to [depth] plies (capped by
+    [Config.get_max_search_depth]).
+    @param verbose print per-iteration statistics to stderr (default true)
+    @param max_time_ms hard time limit; no new iteration starts after half of it
+    @param state tables to use (default {!default_state})
+    @param stop setting this flag (e.g. from another thread) ends the search after
+           the first iteration
+    @param on_iteration called with the result of every completed iteration *)
+val find_best_move
+  :  ?verbose:bool
+  -> ?max_time_ms:int
+  -> ?state:state
+  -> ?stop:bool Atomic.t
+  -> ?on_iteration:(search_result -> unit)
+  -> Game.t
+  -> int
+  -> search_result

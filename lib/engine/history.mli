@@ -1,36 +1,23 @@
-(** History heuristic for move ordering *)
+(** History heuristic for move ordering: [from][to] scores of quiet moves that
+    caused beta cutoffs *)
 
 open Chessml_core
 
-(** History table type *)
 type t
 
-(** Create a new history table *)
+(** Scores are capped at this value *)
+val max_score : int
+
 val create : unit -> t
+val clear : t -> unit
 
-(** Get the global history table *)
-val get_global : unit -> t
+(** Record a quiet move that caused a beta cutoff at the given depth *)
+val record_cutoff : t -> Move.t -> int -> unit
 
-(** Clear the history table *)
-val clear : unit -> unit
+val get_score : t -> Move.t -> int
 
-(** Record a move that caused a beta cutoff *)
-val record_cutoff : Move.t -> int -> unit
+(** Halve all scores (between searches) *)
+val age : t -> unit
 
-(** Record a move that failed to cause a cutoff *)
-val record_failure : Move.t -> int -> unit
-
-(** Get the history score for a move from the global table *)
-val get_score : Move.t -> int
-
-(** Get the history score for a move from a specific table *)
-val get_score_from_table : t -> Move.t -> int
-
-(** Record a cutoff in a specific table *)
-val record_cutoff_in_table : t -> Move.t -> int -> unit
-
-(** Age the history table (divide all scores by 2) *)
-val age_table : unit -> unit
-
-(** Get statistics about the history table (total_entries, max_score, avg_score) *)
-val get_stats : unit -> int * int * float
+(** (non-zero entries, max score, average non-zero score) *)
+val stats : t -> int * int * float

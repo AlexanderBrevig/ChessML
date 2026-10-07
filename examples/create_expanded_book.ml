@@ -61,7 +61,7 @@ let openings = ref []
 
 let add_position fen moves =
   let pos = Position.of_fen fen in
-  let key = Zobrist.compute pos in
+  let key = Position.key pos in
   List.iter (fun move -> openings := (key, move) :: !openings) moves
 ;;
 

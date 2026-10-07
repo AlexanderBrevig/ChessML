@@ -1,18 +1,14 @@
 (** Killers - Killer move heuristic for move ordering
     
-    Stores quiet moves that caused beta cutoffs at each ply depth. These moves are
-    likely to be good in sibling nodes at the same depth. Maintains up to 2 killer
-    moves per depth level using a replacement scheme (most recent killers).
-    
-    Used by: Search move ordering to prioritize refutation moves (score: 5000)
-    Note: FIXED bug where unbounded history was dominating killers
+    Stores up to two quiet moves per ply that caused beta cutoffs; they are
+    likely to be good in sibling nodes at the same ply (most recent first).
 *)
 
 open Chessml_core
 
 (** Killer move table - stores up to 2 killer moves per depth level *)
 type killer_table =
-  { mutable killers : Move.t option array array (* [depth][slot] where slot 0,1 *)
+  { killers : Move.t option array array (* [depth][slot] where slot 0,1 *)
   ; max_depth : int
   }
 
@@ -70,18 +66,3 @@ let is_killer table depth move =
       killers)
   else false
 ;;
-
-(** Global killer table - initialized with reasonable max depth *)
-let global_killer_table = create 64
-
-(** Clear global killer table (call at start of new search) *)
-let clear_global () = clear global_killer_table
-
-(** Store killer move in global table *)
-let store_global_killer depth move = store_killer global_killer_table depth move
-
-(** Get killer moves from global table *)
-let get_global_killers depth = get_killers global_killer_table depth
-
-(** Check if move is killer in global table *)
-let is_global_killer depth move = is_killer global_killer_table depth move

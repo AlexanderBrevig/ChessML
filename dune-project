@@ -24,6 +24,9 @@
   (ocaml
    (>= 5.3))
   dune
-  (ocaml-lsp-server
-   (>= 1.23.1))
-  (alcotest :with-test)))
+  domainslib
+  (alcotest :with-test)
+  (bisect_ppx
+   (and
+    :with-test
+    (>= 2.5.0)))))

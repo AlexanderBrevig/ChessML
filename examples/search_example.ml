@@ -12,7 +12,8 @@ let test_position name fen depth =
   | Some mv ->
     Printf.printf "Best move: %s\n" (Move.to_uci mv);
     Printf.printf "Evaluation: %d centipawns\n" result.Search.score;
-    if abs result.Search.score > 90000 then Printf.printf "Mate found!\n"
+    if Score.is_mate result.Search.score
+    then Printf.printf "Mate in %d\n" (Score.mate_in_moves result.Search.score)
   | None -> Printf.printf "No legal moves available!\n"
 ;;
 

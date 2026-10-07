@@ -1,29 +1,19 @@
-(** Zobrist hashing for position keys *)
+(** Position hash keys in the Polyglot scheme. Position maintains its key
+    incrementally from these; use [Position.key] to get a position's hash. *)
 
 open Chessml_core
 open Types
 
 type t = Int64.t
 
-(** Compute zobrist from raw components (for Position.of_fen) *)
-val compute_from_raw
-  :  piece option array
-  -> color
-  -> Position.castling_rights array
-  -> Square.t option
-  -> t
+(** Key for a piece standing on a square *)
+val piece_key : piece -> Square.t -> t
 
-(** Compute the Zobrist hash for a position *)
-val compute : Position.t -> t
+(** Key for one castling right *)
+val castling_key : color:color -> short:bool -> t
 
-(** Hash/unhash a piece at a square *)
-val hash_piece : t -> Square.t -> piece -> t
+(** Key for an en passant capture being possible on a file (0-7) *)
+val ep_file_key : int -> t
 
-(** Hash/unhash an en passant square *)
-val hash_ep_square : t -> Square.t -> t
-
-(** Hash/unhash castling rights *)
-val hash_castling_rights : t -> Position.castling_rights array -> t
-
-(** Hash/unhash side to move *)
-val hash_side_to_move : t -> color -> t
+(** Key XORed in when White is to move *)
+val white_to_move_key : t

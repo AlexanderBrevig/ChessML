@@ -47,7 +47,11 @@ let test_draw_insufficient_material () =
   Alcotest.(check bool) "KN vs K is a draw" true (Game.is_draw game);
   (* KB vs K *)
   let game = Game.of_fen "8/8/8/4k3/8/8/4KB2/8 w - - 0 1" in
-  Alcotest.(check bool) "KB vs K is a draw" true (Game.is_draw game)
+  Alcotest.(check bool) "KB vs K is a draw" true (Game.is_draw game);
+  let game = Game.of_fen "7k/8/8/8/8/8/1b6/K1B5 w - - 0 1" in
+  Alcotest.(check bool) "KB vs KB same color is a draw" true (Game.is_draw game);
+  let game = Game.of_fen "7k/8/8/8/8/8/1b6/KB6 w - - 0 1" in
+  Alcotest.(check bool) "KB vs KB opposite colors is not a draw" false (Game.is_draw game)
 ;;
 
 let test_draw_fifty_move_rule () =
@@ -217,6 +221,65 @@ let test_castling_move_counter () =
   Alcotest.(check int) "Halfmove increments" (halfmove_before + 1) halfmove_after
 ;;
 
+(* Play a sequence of coordinate moves, failing if any is not legal *)
+let play_moves game moves =
+  List.fold_left
+    (fun g s ->
+       match Game.find_move g s with
+       | Some mv -> Game.make_move g mv
+       | None -> Alcotest.failf "move %s should be legal in %s" s (Game.to_fen g))
+    game
+    moves
+;;
+
+let test_find_move_castling () =
+  let game =
+    play_moves (Game.default ()) [ "e2e4"; "e7e5"; "g1f3"; "b8c6"; "f1c4"; "g8f6" ]
+  in
+  let castled = play_moves game [ "e1g1" ] in
+  Alcotest.(check string)
+    "rook moves with king"
+    "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4"
+    (Game.to_fen castled);
+  let via_san = play_moves game [ "O-O" ] in
+  Alcotest.(check string)
+    "O-O is the same move"
+    (Game.to_fen castled)
+    (Game.to_fen via_san)
+;;
+
+let test_find_move_en_passant () =
+  let game = play_moves (Game.default ()) [ "e2e4"; "a7a6"; "e4e5"; "d7d5" ] in
+  Alcotest.(check string)
+    "double push sets ep square"
+    "rnbqkbnr/1pp1pppp/p7/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3"
+    (Game.to_fen game);
+  let game = play_moves game [ "e5d6" ] in
+  Alcotest.(check bool)
+    "captured pawn removed"
+    true
+    (Position.piece_at (Game.position game) Chessml.Square.d5 = None)
+;;
+
+let test_find_move_promotion () =
+  let game = Game.of_fen "8/4P3/8/8/8/8/k7/7K w - - 0 1" in
+  let check_promo s expected =
+    match Game.find_move game s with
+    | Some mv -> Alcotest.(check bool) s true (Chessml.Move.promotion mv = Some expected)
+    | None -> Alcotest.failf "%s should be legal" s
+  in
+  check_promo "e7e8q" Chessml.Queen;
+  check_promo "e7e8n" Chessml.Knight;
+  Alcotest.(check bool) "promotion piece required" true (Game.find_move game "e7e8" = None)
+;;
+
+let test_find_move_rejects () =
+  let game = Game.default () in
+  Alcotest.(check bool) "illegal move" true (Game.find_move game "e2e5" = None);
+  Alcotest.(check bool) "garbage" true (Game.find_move game "xyz" = None);
+  Alcotest.(check bool) "no castling yet" true (Game.find_move game "O-O" = None)
+;;
+
 let () =
   let open Alcotest in
   run
@@ -239,6 +302,12 @@ let () =
         ; test_case "Turn switching" `Quick test_castling_turn_switching
         ; test_case "Piece positions" `Quick test_castling_piece_positions
         ; test_case "Move counter" `Quick test_castling_move_counter
+        ] )
+    ; ( "find_move"
+      , [ test_case "Castling" `Quick test_find_move_castling
+        ; test_case "En passant" `Quick test_find_move_en_passant
+        ; test_case "Promotion" `Quick test_find_move_promotion
+        ; test_case "Rejects illegal" `Quick test_find_move_rejects
         ] )
     ]
 ;;

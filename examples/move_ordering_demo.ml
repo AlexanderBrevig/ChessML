@@ -19,20 +19,7 @@ let show_move_ordering fen =
   then Printf.printf "  ... and %d more\n" (List.length moves - 10);
   (* This is internal to Search module, so we'll create our own scoring *)
   let score_move mv =
-    let is_check = ref false in
-    (try
-       let new_pos = Position.make_move pos mv in
-       let opponent = Types.Color.opponent (Position.side_to_move pos) in
-       let king_sq =
-         match Movegen.find_king new_pos opponent with
-         | Some sq -> sq
-         | None -> 0
-       in
-       let side = Position.side_to_move new_pos in
-       let attackers = Movegen.compute_attackers_to new_pos king_sq side in
-       is_check := not (Bitboard.is_empty attackers)
-     with
-     | _ -> ());
+    let is_check = Search_common.Ordering.gives_check pos mv in
     let mvv_lva =
       if Move.is_capture mv
       then (
@@ -51,7 +38,7 @@ let show_move_ordering fen =
         (victim * 10) - attacker)
       else 0
     in
-    if !is_check
+    if is_check
     then 10000 + mvv_lva, "CHECK"
     else if Move.is_capture mv
     then 1000 + mvv_lva, "CAPTURE (MVV-LVA)"

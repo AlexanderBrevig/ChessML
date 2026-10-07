@@ -1,71 +1,106 @@
-(** XBoard Protocol Tests *)
+(** XBoard protocol tests: drive a session line by line and inspect its output *)
 
 open Chessml
 
-(* Test basic move parsing - XBoard uses coordinate notation *)
-let test_move_generation () =
-  let game = Game.default () in
-  let pos = Game.position game in
-  let moves = Movegen.generate_moves pos in
-  (* Verify we can generate legal moves (XBoard needs this) *)
-  assert (List.length moves > 0);
-  assert (List.length moves = 20);
-  (* Starting position has 20 legal moves *)
-  print_endline "✓ XBoard move generation test passed"
+let session () =
+  let out = ref [] in
+  let s = Xboard.create_session ~send:(fun l -> out := l :: !out) () in
+  fun lines ->
+    out := [];
+    List.iter (fun l -> ignore (Xboard.handle_line s l)) lines;
+    List.rev !out
 ;;
 
-(* Test FEN handling for XBoard setboard command *)
-let test_setboard () =
-  (* Test that we can create a game from FEN (setboard command) *)
-  let fen = "r1bqkbnr/pppppppp/2n5/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" in
-  let game = Game.of_fen fen in
-  let pos = Game.position game in
-  (* Verify position was set *)
-  let result_fen = Position.to_fen pos in
-  assert (String.length result_fen > 0);
-  assert (String.contains result_fen 'n');
-  (* knight present *)
-  print_endline "✓ XBoard setboard test passed"
+let moves out =
+  List.filter_map
+    (fun l ->
+       if String.starts_with ~prefix:"move " l
+       then Some (String.sub l 5 (String.length l - 5))
+       else None)
+    out
 ;;
 
-(* Test time controls - XBoard sends time in centiseconds *)
-let test_time_controls () =
-  (* XBoard time format: time in centiseconds (1/100th of a second) *)
-  let time_centiseconds = 30000 in
-  (* 300 seconds = 5 minutes *)
-  let time_seconds = time_centiseconds / 100 in
-  assert (time_seconds = 300);
-  (* XBoard can also send time per move *)
-  let time_per_move = 100 in
-  (* 1 second *)
-  let seconds = time_per_move / 100 in
-  assert (seconds = 1);
-  print_endline "✓ XBoard time controls test passed"
+let test_features () =
+  let run = session () in
+  let out = run [ "xboard"; "protover 2" ] in
+  Alcotest.(check bool) "done=1" true (List.mem "feature done=1" out);
+  Alcotest.(check bool)
+    "sigint=0"
+    true
+    (List.exists (fun l -> Str.string_match (Str.regexp ".*sigint=0") l 0) out)
 ;;
 
-(* Test move formatting *)
-let test_move_formatting () =
-  let game = Game.default () in
-  let pos = Game.position game in
-  let moves = Movegen.generate_moves pos in
-  (* Test that moves can be converted to UCI format (similar to XBoard) *)
-  let move_strings = List.map Move.to_uci moves in
-  assert (List.length move_strings = 20);
-  (* Verify format looks reasonable *)
-  List.iter
-    (fun mv_str ->
-       assert (String.length mv_str >= 4);
-       assert (String.length mv_str <= 5) (* 4 for normal, 5 for promotion *))
-    move_strings;
-  print_endline "✓ XBoard move formatting test passed"
+let test_reply_and_force () =
+  let run = session () in
+  let out = run [ "new"; "sd 2"; "usermove e2e4" ] in
+  Alcotest.(check int) "engine replies as black" 1 (List.length (moves out));
+  let out = run [ "new"; "force"; "usermove e2e4"; "usermove e7e5" ] in
+  Alcotest.(check int) "force mode is silent" 0 (List.length (moves out));
+  let out = run [ "sd 2"; "go" ] in
+  Alcotest.(check int) "go makes the engine move" 1 (List.length (moves out))
 ;;
 
-(* Run all tests *)
+let test_illegal_and_underpromotion () =
+  let run = session () in
+  Alcotest.(check (list string))
+    "illegal"
+    [ "Illegal move: e2e5" ]
+    (run [ "new"; "force"; "usermove e2e5" ]);
+  let out =
+    run [ "setboard 8/4P3/8/8/8/8/k6p/7K w - - 0 1"; "force"; "usermove e7e8n"; "ping 1" ]
+  in
+  Alcotest.(check (list string)) "accepted" [ "pong 1" ] out
+;;
+
+let test_undo () =
+  let run = session () in
+  let out =
+    run
+      [ "new"
+      ; "force"
+      ; "usermove e2e4"
+      ; "undo"
+      ; "usermove d2d4"
+      ; "remove"
+      ; "usermove g1f3"
+      ]
+  in
+  Alcotest.(check (list string)) "undo/remove keep the board in sync" [] out
+;;
+
+let test_results () =
+  let run = session () in
+  let out = run [ "setboard 6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1"; "sd 3"; "go" ] in
+  Alcotest.(check (list string))
+    "mates and claims"
+    [ "move a1a8"; "1-0 {White mates}" ]
+    out;
+  let out = run [ "setboard k7/8/1K6/8/8/8/8/2Q5 w - - 0 1"; "force"; "usermove c1c7" ] in
+  Alcotest.(check (list string))
+    "stalemate is a draw, not resign"
+    [ "1/2-1/2 {Stalemate}" ]
+    out
+;;
+
+let test_errors () =
+  let run = session () in
+  let out = run [ "sd x"; "level 40 5"; "ping 7" ] in
+  Alcotest.(check bool) "still alive" true (List.mem "pong 7" out)
+;;
+
 let () =
-  Printf.printf "=== XBoard Protocol Tests ===\n\n";
-  test_move_generation ();
-  test_setboard ();
-  test_time_controls ();
-  test_move_formatting ();
-  Printf.printf "\n✅ All XBoard protocol tests passed!\n"
+  Alcotest.run
+    "XBoard"
+    [ ( "xboard"
+      , [ Alcotest.test_case "Features" `Quick test_features
+        ; Alcotest.test_case "Reply and force" `Quick test_reply_and_force
+        ; Alcotest.test_case
+            "Illegal and underpromotion"
+            `Quick
+            test_illegal_and_underpromotion
+        ; Alcotest.test_case "Undo and remove" `Quick test_undo
+        ; Alcotest.test_case "Result claims" `Quick test_results
+        ; Alcotest.test_case "Errors" `Quick test_errors
+        ] )
+    ]
 ;;

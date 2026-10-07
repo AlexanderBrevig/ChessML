@@ -11,7 +11,7 @@ build:
 clean:
     dune clean
 
-# Run all tests (includes quick search tests ~11s)
+# Run all tests (a few seconds)
 test:
     dune runtest
 
@@ -19,25 +19,19 @@ test:
 test-verbose:
     dune runtest --verbose
 
+# Run the search tests including the `Slow cases
 test-search:
     dune exec test/engine/test_search.exe
 
-# Run specific test suites
+# Run the tests of one directory
 test-core:
-    dune exec test/core/test_types.exe
-    dune exec test/core/test_square.exe
-    dune exec test/core/test_bitboard.exe
-    dune exec test/core/test_move.exe
+    dune build @test/core/runtest --force
 
 test-engine:
-    dune exec test/engine/test_position.exe
-    dune exec test/engine/test_game.exe
-    dune exec test/engine/test_zobrist.exe
-    dune exec test/engine/test_eval.exe
+    dune build @test/engine/runtest --force
 
 test-protocols:
-    dune exec test/protocols/test_uci.exe
-    dune exec test/protocols/test_xboard.exe
+    dune build @test/protocols/runtest --force
 
 test-integration:
     dune exec test/test_integration.exe
@@ -70,11 +64,11 @@ format:
 format-check:
     dune build @fmt
 
-# Run perft benchmarks
-perft depth="5":
-    dune exec examples/perft_example.exe {{depth}}
+# Run the perft example (move generation counts)
+perft:
+    dune exec examples/perft_example.exe
 
-# Show test coverage (runs quick tests by default)
+# Show test coverage (needs bisect_ppx: opam install bisect_ppx)
 coverage:
     dune runtest --instrument-with bisect_ppx --force
     bisect-ppx-report html

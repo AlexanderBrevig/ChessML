@@ -20,37 +20,16 @@ dune exec examples/search_example.exe
 dune exec examples/move_ordering_demo.exe
 ```
 
-## Parallel Search Benchmarks and Analysis
+## Benchmarks
 
-Tools for analyzing parallel search performance:
+- **`search_bench.ml`** - Fixed-depth search benchmark from the starting position (NPS).
+- **`bench_breakdown.ml`** - Performance breakdown by component (movegen, make_move, eval).
 
-- **`parallel_bench.ml`** - Comprehensive parallel search benchmark suite.
-- **`parallel_quality_test.ml`** - Tests search quality (accuracy) with parallel search.
-- **`speedup_analysis.ml`** - Detailed speedup analysis across different positions and depths.
-- **`quick_parallel_test.ml`** - Quick parallel vs single-threaded comparison.
-- **`bench_breakdown.ml`** - Performance breakdown by search component.
-
-**Usage:**
+**Usage (always use the release profile for benchmarks):**
 
 ```bash
-dune exec examples/speedup_analysis.exe
-dune exec examples/quick_parallel_test.exe
-```
-
-## Advanced Search Techniques - Educational
-
-These examples demonstrate advanced search optimizations:
-
-- **`test_futility.ml`** - Futility pruning demonstration and effectiveness testing.
-- **`test_lmr.ml`** - Late Move Reductions (LMR) demonstration.
-- **`test_null_move.ml`** - Null move pruning demonstration.
-- **`profile_test.ml`** - Profiling and performance analysis.
-
-**Usage:**
-
-```bash
-dune exec examples/test_futility.exe
-dune exec examples/test_lmr.exe
+dune exec --profile=release examples/search_bench.exe
+dune exec --profile=release examples/bench_breakdown.exe
 ```
 
 ## Opening Book Utilities

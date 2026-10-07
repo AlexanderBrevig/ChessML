@@ -92,7 +92,7 @@
 ;; Regression Tests
 ;; ============================================================================
 
-(executable
+(test
  (name test_illegal_move_regression)
  (libraries chessml))
 
@@ -102,4 +102,12 @@
 
 (test
  (name test_pgn_parser)
+ (libraries chessml alcotest))
+
+(test
+ (name test_polyglot)
+ (libraries chessml alcotest))
+
+(test
+ (name test_perft)
  (libraries chessml alcotest))
