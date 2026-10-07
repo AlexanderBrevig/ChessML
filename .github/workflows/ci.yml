@@ -21,8 +21,13 @@ jobs:
         with:
           ocaml-compiler: "5.3"
 
+      # Separate steps: --deps-only applies to every package on the command line,
+      # so ocamlformat would only get its dependencies installed
       - name: Install dependencies
-        run: opam install . --deps-only --with-test ocamlformat.0.27.0
+        run: opam install . --deps-only --with-test
+
+      - name: Install ocamlformat
+        run: opam install ocamlformat.0.27.0
 
       - name: Check formatting
         run: opam exec -- dune build @fmt
