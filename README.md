@@ -1,307 +1,131 @@
 # ChessML
 
 > [!NOTE]
-> **Personal Learning Project**  
-> This is a personal hobby project created for learning chess programming and OCaml.
-> It has no specific roadmap, goals, or direction—just exploration and experimentation.
-> Code quality and features evolve organically as I learn. Contributions and suggestions
-> are welcome, but expect things to change arbitrarily as I try new ideas!
+> **Personal Learning Project**
+> This is a hobby project for learning chess programming and OCaml, written for my own pleasure.
+> It has no roadmap, goals, or direction—just exploration and experimentation.
+> You are welcome to try it, read it, or suggest things, but expect it to change
+> arbitrarily as I try new ideas!
 >
-> I will concider this project done when I can no longer beat it 😎
+> I will consider this project done when I can no longer beat it 😎
 
-A bitboard chess engine written in OCaml with UCI & XBoard protocol support.
-
-Play chess against ChessML using any UCI- or XBoard-compatible GUI! ♟️
+A chess engine written in OCaml with UCI and XBoard support, so you can play it in a chess GUI.
 
 Learn with me here: https://alexanderbrevig.github.io/ChessML/
 
-## ✨ Features
+## What it is
 
-- ⚡**Fast Move Generation**: Efficient bitboard-based move generation
-- 🧠**Alpha-Beta Search**: Minimax search with alpha-beta pruning
-- 💾**Transposition Tables**: Position caching for faster search
-- 📚**Opening Book**: Support for Polyglot opening books generated from PGN
-- 🏗️**Book Generator**: about 1.5M position-move combinations from 4.2M games
-- 🖥️**UCI Protocol**: Compatible with chess GUIs like Arena and ChessBase
-- 🎮**XBoard Protocol**: Play via the xboard/winboard interface
+- **Board and moves**: bitboards with magic bitboards for sliding pieces; move generation is checked with perft against the standard test positions.
+- **Search**: iterative deepening principal variation search with a transposition table, quiescence search, null move pruning, late move reductions and the usual pruning tricks. Detects repetitions, the fifty-move rule and insufficient material.
+- **Evaluation**: hand-written terms (material, piece-square tables, pawn structure, king safety, development, a few endgame patterns).
+- **Opening book**: standard Polyglot `.bin` books, plus a tool that builds one from PGN files.
+- **Protocols**: UCI and XBoard. I play it through [cutechess](https://github.com/cutechess/cutechess); other GUIs should work but are untested.
 
-## 🚀 Quick Start
+What it is not: competitive with modern engines. It is single-threaded, has no neural network evaluation, no endgame tablebases and no endgame mating technique (it can fail to convert a won K+Q vs K). The evaluation is untuned. It has only been built and run on Linux.
 
-### Install Dependencies
+## Strength
 
-```bash
-# Ubuntu/Debian
-sudo apt install opam stockfish
+Very roughly **1850–2000** on Stockfish's `UCI_Elo` scale. That comes from 200 games at 30s+0.3s per game against Stockfish 18 limited to 1320–2200 Elo, single thread, with the opening book. The error bars are large (±150) and Stockfish's limited mode is calibrated at longer time controls, so this is a ballpark, not a human rating.
 
-# Initialize OCaml environment
-opam init
-opam switch create 5.3.0
-opam switch 5.3.0
-eval (opam env)
-opam install dune alcotest ocaml-lsp-server ocamlformat
-```
-
-### Build the Engine
-
-```bash
-# Development build (debug mode, faster compilation)
-dune build
-
-# Release build (optimized, ~30-40% faster performance)
-dune build --profile=release
-
-```
-
-> **⚠️ Performance Note**: For benchmarks, testing, or actual gameplay, **always use `--profile=release`**!
-> Release mode enables critical optimizations (inlining, flambda, bounds check elimination) that significantly improve search speed.
->
-> - Debug mode: ~86K NPS
-> - Release mode: ~120K NPS (+40% faster)
-
-### Opening Book Creation and Setup
-
-> ![WARN]
-> You will need about 4 GiB RAM and 3.5 GiB of disk for the downloaded PGNs.
-> It takes about 10 minutes in total and generates a 24MB book.
-
-```bash
-./scripts/download_openings.fish # about 6 minutes and 30 seconds
-dune build --profile=release && CHESSML_PARALLEL=12 ./_build/default/bin/create_book.exe # about 4 minutes
-```
-
-The book uses the standard Polyglot format, so third-party Polyglot `.bin` books work too. Books built by versions before the switch to Polyglot keys must be regenerated.
-
-You should then see something like
-
-```
-📊 Processed 4193345 games total (avg 20.0 plies per game)
-
-📝 Building book entries (min 3 games)...
-   • 1473437 unique position-move combinations
-   • 996306 unique positions
-
-💾 Writing book.bin...
-   • 23574992 bytes
-   • 1473437 moves
-```
-
-The first 20 plies of every game are counted. A move enters the book if it was played in at least 3 games and in at least 5% of the games reaching that position; its weight is proportional to how often it was played. From the starting position the book plays 1.e4 57%, 1.d4 28%, 1.c4 8% and 1.Nf3 6% of the time.
-
-ChessML will automatically look for the opening book in the following locations (in order):
-
-1. Current directory: `./book.bin`
-2. XDG data directory: `$XDG_DATA_HOME/chessml/book.bin` (typically `~/.local/share/chessml/book.bin`)
-3. User directory: `~/.chessml/book.bin`
-4. System-wide: `/usr/local/share/chessml/book.bin`
-5. System-wide: `/usr/share/chessml/book.bin`
-
-Cutechess will not find the book, so please install it.
-To install the opening book for your user:
-
-```bash
-# Create the directory
-mkdir -p ~/.local/share/chessml
-
-# Copy the book file
-cp book.bin ~/.local/share/chessml/
-```
-
-## 🔧 Development
-
-ChessML uses [Just](https://github.com/casey/just) as a command runner see `just list`.
-
-### Quick Start
-
-```bash
-# Build the project
-just
-
-# Run all tests (a few seconds)
-just test
-
-# Run the search tests including the slow cases
-just test-search
-
-# Format code
-just format
-
-# Watch mode (rebuild on changes)
-just watch
-```
-
-### Using Dune Directly
-
-You can also use dune commands directly:
-
-```bash
-# Development build (debug mode)
-dune build
-
-# Release build (optimized - use for performance testing!)
-dune build --profile=release
-
-# Run all tests
-dune runtest
-
-# Run quick search tests only
-dune exec test/engine/test_search.exe -- -q
-
-# Run slow/deep search tests
-dune exec test/engine/test_search.exe -- test slow_tests
-
-# Test UCI engine manually
-echo "uci
-setoption name MaxDepth value 3
-position startpos
-go depth 2
-quit" | ./_build/default/bin/chessml_uci.exe
-
-# Test XBoard engine manually
-printf "xboard\nprotover 2\nnew\nusermove e2e4\nquit\n" | ./_build/default/bin/chessml_xboard.exe
-
-# Performance benchmarks (ALWAYS use --profile=release!)
-dune exec --profile=release examples/bench_breakdown.exe
-```
-
-## ⚙️ Configuration
-
-The engine supports runtime configuration via both UCI and XBoard protocols:
-
-### UCI Configuration
-
-```bash
-# Set maximum search depth (1-50)
-setoption name MaxDepth value 8
-
-# Set quiescence search depth (1-20)
-setoption name QuiescenceDepth value 6
-
-# Enable/disable quiescence search
-setoption name UseQuiescence value true
-
-# Enable/disable transposition table
-setoption name UseTranspositionTable value true
-
-# Set hash table size in MB
-setoption name Hash value 64
-```
-
-### XBoard Configuration
-
-```bash
-# Configure via option commands
-option MaxDepth=8
-option UseQuiescence=true
-option DebugOutput=false
-```
-
-### 💪 Strength Levels
-
-- **Depth 1-3**: Beginner 🐣 (very fast)
-- **Depth 4-5**: Intermediate 🎯 (default, ~1-10s per move)
-- **Depth 6-8**: Advanced 🔥 (slower, stronger)
-- **Depth 9+**: Expert 🏆 (very slow, tournament strength)
-
-## 🧪 Testing
-
-ChessML uses a comprehensive test suite with both quick and thorough validation:
-
-### Test Categories
-
-- **Core Tests**: Data structures, move generation, position handling
-- **Engine Tests**: Evaluation, game logic, zobrist hashing
-- **Search Tests**:
-  - **Quick**: mates, tactics, search behavior (run by `dune runtest`)
-  - **Slow**: deeper searches (`just test-search`)
-- **Perft**: move generation against published node counts
-- **Protocol Tests**: UCI and XBoard sessions driven line by line
-- **Integration Tests**: End-to-end functionality
-
-### Running Tests
-
-```bash
-# Quick development feedback (a few seconds)
-dune runtest
-# or
-just test
-
-# Deep search validation when needed
-just test-search
-
-# Run specific test categories
-just test-core          # Core data structures
-just test-engine        # Engine functionality
-just test-integration   # Integration tests
-```
-
-The test suite automatically runs quick tests by default to keep development cycles fast, with deep validation available when needed.
-
-### 🎲 Play Against ChessML
-
-Cutechess install
-
-```bash
-sudo apt install git build-essential cmake qtbase5-dev qtbase5-dev-tools libqt5svg5-dev
-git clone git@github.com:cutechess/cutechess.git
-cd cutechess
-mkdir build
-cd build
-cmake ..
-make
-cp cutechess cutechess-cli /usr/local/bin # copy binaries to some directory in your path or add $PWD to $PATH
-```
-
-Launch cutechess, add the engine in settings (I recomment to use xboard version) and create a new game.
-
-## 📖 Documentation
-
-- [docs/README.md](./docs/README.md) - Intro to ChessML
-
-## 🙏 Credits
-
-- [Chess Programming Wiki](https://www.chessprogramming.org/)
-- [Stockfish](https://github.com/official-stockfish/Stockfish) - Reference implementation
-- [Real World OCaml](https://dev.realworldocaml.org/)
-- [OCaml Manual](https://ocaml.org/manual/)
-- [PGNMentor](https://www.pgnmentor.com) - Opening PGN database
-
-## 🤝 Contributing
-
-Contributions and suggestions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## 📄 License
-
-ChessML is licensed under the [MIT License](LICENSE) - see the [LICENSE](https://github.com/alexanderbrevig/chessml/blob/main/LICENSE) file for details.
-
-## 📝 TODO
-
-- Figure out if I can publish the book.bin generated from PGNMentor
-- Tune evaluation parameters
-- Add endgame tablebase support
-- Lazy SMP parallel search
-- Endgame knowledge (KQK, KRK, KBNK mating guidance, tapered evaluation)
-
-## 📈 Strength
-
-A rough estimate is **about 1850-2000** on Stockfish's `UCI_Elo` scale, from 200 games at 30s+0.3s against Stockfish 18 limited to 1320, 1600, 1900 and 2200 Elo (single thread, with the opening book). The error bars are large (+-150 per run) and Stockfish's limited mode is calibrated at longer time controls, so treat it as a ballpark, not a FIDE rating.
+To measure it yourself:
 
 ```sh
 cutechess-cli -tournament gauntlet \
    -engine name=ChessML cmd=./_build/default/bin/chessml_uci.exe proto=uci \
    -engine name=SF1900 cmd=stockfish proto=uci option.UCI_LimitStrength=true option.UCI_Elo=1900 \
-   -each tc=30+0.3 -games 2 -rounds 10 -concurrency 8
+   -each tc=30+0.3 -games 2 -rounds 10 -concurrency 8 -pgnout games.pgn
 ```
 
-### Running Engine Matches
+## Building
 
-```sh
-# Run a match against Stockfish (skill level 0)
-cutechess-cli \
-   -engine name=ChessML cmd=./_build/default/bin/chessml_xboard.exe proto=xboard \
-   -engine name=Stockfish cmd=stockfish proto=uci option."Skill Level"=0 \
-   -each tc=40/300 \
-   -rounds 2 \
-   -repeat \
-   -pgnout "games.pgn" \
-   -recover
+You need OCaml 5.3 or newer and opam.
+
+```bash
+opam switch create 5.3.0
+eval $(opam env)        # fish: eval (opam env)
+opam install . --deps-only --with-test
+
+dune build --profile=release
 ```
+
+Use the release profile for playing and benchmarking. The engines are `./_build/default/bin/chessml_uci.exe` and `./_build/default/bin/chessml_xboard.exe`; point your GUI at either.
+
+## Opening book
+
+No book is included (I have not figured out whether I may publish one built from PGNMentor games), so you build your own. This needs about 4 GiB of RAM, 3.5 GiB of disk for the PGN downloads and around 10 minutes:
+
+```bash
+./scripts/download_openings.fish   # downloads the PGNMentor openings into openings/
+dune build --profile=release && CHESSML_PARALLEL=12 ./_build/default/bin/create_book.exe
+```
+
+This reads the first 20 plies of about 4.2M games and writes a 24 MB `book.bin`. A move goes into the book if it was played in at least 3 games and in at least 5% of the games that reached the position; its weight is proportional to how often it was played. From the starting position it plays 1.e4 57%, 1.d4 28%, 1.c4 8% and 1.Nf3 6% of the time.
+
+Any Polyglot book works, including third-party ones. ChessML looks for `book.bin` in:
+
+1. the current directory
+2. `$XDG_DATA_HOME/chessml/` (usually `~/.local/share/chessml/`)
+3. `~/.chessml/`
+4. `/usr/local/share/chessml/` and `/usr/share/chessml/`
+
+GUIs usually start engines in another directory, so install the book for your user:
+
+```bash
+mkdir -p ~/.local/share/chessml && cp book.bin ~/.local/share/chessml/
+```
+
+## Options
+
+Both protocols accept the same options (`setoption name Hash value 64` in UCI, `option Hash=64` in XBoard):
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `Hash` | 16 | Transposition table size in MB |
+| `MaxDepth` | 20 | Maximum search depth; lower it to make the engine weaker |
+| `QuiescenceDepth` | 8 | Maximum quiescence search depth |
+| `UseQuiescence` | true | Search captures at the horizon |
+| `UseTranspositionTable` | true | Use the transposition table |
+| `OwnBook` | true | Play moves from the opening book |
+| `DebugOutput` | false | Extra output on stderr |
+
+Normally the engine thinks for a share of its remaining clock time, so `MaxDepth` only matters at slow time controls.
+
+## Development
+
+[Just](https://github.com/casey/just) wraps the common commands (`just list`):
+
+```bash
+just              # dune build
+just test         # dune runtest, a few seconds
+just test-search  # search tests including the slow ones
+just format       # ocamlformat 0.27.0
+dune exec --profile=release examples/search_bench.exe
+```
+
+Quick manual check:
+
+```bash
+printf "uci\nposition startpos moves e2e4\ngo depth 6\nquit\n" | ./_build/default/bin/chessml_uci.exe
+```
+
+The tests cover the core types, perft, evaluation symmetry, SEE, search (mates, tactics, repetition), the opening book and PGN parser, and UCI/XBoard sessions. [docs/README.md](./docs/README.md) describes the code layout, and [CONTRIBUTING.md](CONTRIBUTING.md) says how to contribute.
+
+## Ideas for later
+
+- Tune the evaluation
+- Endgame knowledge (mating technique, tapered evaluation)
+- Endgame tablebases
+- Lazy SMP parallel search
+- Find out whether a book built from PGNMentor games can be published
+
+## Credits
+
+- [Chess Programming Wiki](https://www.chessprogramming.org/)
+- [Stockfish](https://github.com/official-stockfish/Stockfish)
+- [Real World OCaml](https://dev.realworldocaml.org/)
+- [OCaml Manual](https://ocaml.org/manual/)
+- [PGNMentor](https://www.pgnmentor.com) for the opening PGN databases
+
+## License
+
+[MIT](LICENSE)
