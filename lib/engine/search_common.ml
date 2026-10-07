@@ -46,7 +46,7 @@ module Razoring = struct
 
   (** Check if we can try razoring *)
   let can_try_razor _pos depth alpha in_check =
-    depth <= 3 && (not in_check) && alpha < 90000 (* Not in mate search *)
+    depth <= 3 && (not in_check) && alpha < Score.mate_bound
   ;;
 
   (** Try razoring: if eval + margin < alpha, return true to signal drop to qsearch *)
@@ -67,7 +67,10 @@ module ReverseFutility = struct
 
   (** Check if we can prune the node (return beta) *)
   let can_prune _pos depth beta eval in_check =
-    depth <= 4 && (not in_check) && beta > -90000 && eval - margin depth >= beta
+    depth <= 4
+    && (not in_check)
+    && abs beta < Score.mate_bound
+    && eval - margin depth >= beta
   ;;
 end
 
@@ -126,7 +129,7 @@ module LMR = struct
     && (not is_tactical)
     &&
     (* Don't reduce tactical moves *)
-    alpha > -90000 (* Not in check / mating positions *)
+    alpha > -Score.mate_bound (* Not when being mated *)
   ;;
 
   (** Calculate reduction amount with logarithmic formula and adjustments 
@@ -187,7 +190,7 @@ module NullMove = struct
     (* Deep enough to be useful *)
     && (not in_check)
     (* Not in check (can't pass) *)
-    && beta < 90000
+    && beta < Score.mate_bound
     &&
     (* Not in mate search *)
     has_non_pawn_material pos (* Avoid zugzwang positions *)
@@ -370,29 +373,23 @@ end
 
 (** Terminal position detection *)
 module Terminal = struct
-  (** Check if position is checkmate or stalemate *)
-  let check pos moves =
+  (** Score a node with no legal moves: [Some (mated at ply)] for checkmate,
+      [Some draw] for stalemate, [None] if there are moves *)
+  let check pos moves ~ply =
     if moves = []
     then (
       let side = Position.side_to_move pos in
-      let opponent = Color.opponent side in
       let king_sq =
-        match Movegen.find_king pos side with
-        | Some sq -> sq
-        | None -> 0
+        if side = White then Position.white_king_sq pos else Position.black_king_sq pos
       in
-      let attackers = Movegen.compute_attackers_to pos king_sq opponent in
-      if Bitboard.is_empty attackers then Some 0 (* Stalemate *) else Some (-20000)
-      (* Checkmate - we lost *))
+      let attackers = Movegen.compute_attackers_to pos king_sq (Color.opponent side) in
+      if Bitboard.is_empty attackers then Some Score.draw else Some (Score.mated_in ply))
     else None
   ;;
 end
 
 (** Quiescence search helpers *)
 module Quiescence = struct
-  (** Maximum quiescence search depth *)
-  let max_depth = 4
-
   (** Generate tactical moves for quiescence search (captures, promotions, and checks) *)
   let generate_tactical_moves pos =
     let all_moves = Movegen.generate_moves pos in
@@ -424,9 +421,6 @@ module Quiescence = struct
   ;;
 end
 
-(** Safe negation for alpha-beta bounds to avoid overflow *)
-let safe_negate x = if x > 50000 then -50000 else if x < -50000 then 50000 else -x
-
 (** Check if the current side to move is in check *)
 let is_in_check pos =
   let side = Position.side_to_move pos in
@@ -444,12 +438,9 @@ let incr_int64 r = r := Int64.add !r 1L
 (** Alpha-beta search constants *)
 module AlphaBeta = struct
   (** Initial alpha/beta bounds *)
-  let initial_alpha = -100000
+  let initial_alpha = -Score.infinity
 
-  let initial_beta = 100000
-
-  (** Mate score detection threshold *)
-  let mate_threshold = 90000
+  let initial_beta = Score.infinity
 
   (** Update alpha and best move *)
   let update_alpha_and_best alpha score best_move mv =

@@ -315,16 +315,7 @@ let main_loop () =
           in
           let end_time = Unix.gettimeofday () in
           let search_time_ms = int_of_float ((end_time -. start_time) *. 1000.0) in
-          (* Format score for UCI (handle mate scores) *)
-          let score_str =
-            if abs result.score >= 90000
-            then (
-              let mate_in = ((100000 - abs result.score) / 2) + 1 in
-              if result.score > 0
-              then Printf.sprintf "mate %d" mate_in
-              else Printf.sprintf "mate -%d" mate_in)
-            else Printf.sprintf "cp %d" result.score
-          in
+          let score_str = Score.to_uci result.score in
           (* Send UCI info about the search *)
           Printf.printf
             "info depth %d score %s nodes %Ld time %d"

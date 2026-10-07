@@ -19,15 +19,17 @@ type search_result =
 val find_best_move : ?verbose:bool -> ?max_time_ms:int -> Game.t -> int -> search_result
 
 (** Alpha-beta search algorithm with transposition table.
+    @param ply Distance from the root (default 0), used for mate distance
     @param pos Current position
+    @param alpha Lower bound of the search window
+    @param beta Upper bound of the search window
     @param depth Remaining depth to search
-    @param alpha Alpha value (best score for maximizing player)
-    @param beta Beta value (best score for minimizing player)
     @param nodes Reference to node counter for tracking search statistics
     @param prev_move Previous move (for countermove heuristic)
     @return (score, best_move_option) *)
 val alphabeta
-  :  Position.t
+  :  ?ply:int
+  -> Position.t
   -> int
   -> int
   -> int

@@ -38,6 +38,7 @@ module Pawn_cache = Engine.Pawn_cache
 module See = Engine.See
 module Piece_tables = Engine.Piece_tables
 module Search_common = Engine.Search_common
+module Score = Engine.Score
 module Polyglot = Engine.Polyglot
 module Opening_book = Engine.Opening_book
 module Pgn_parser = Engine.Pgn_parser

@@ -65,32 +65,6 @@ type search_result =
   ; depth : int
   }
 
-(** Mate score constants *)
-let mate_score = 100000
-
-let mate_threshold = 90000
-
-(** Check if a position is terminal (checkmate or stalemate) *)
-let is_terminal (pos : Position.t) : bool * int =
-  let moves = Movegen.generate_moves pos in
-  if List.length moves = 0
-  then (
-    (* No legal moves - either checkmate or stalemate *)
-    let side = Position.side_to_move pos in
-    let opponent = Color.opponent side in
-    let king_sq =
-      match Movegen.find_king pos side with
-      | Some sq -> sq
-      | None -> 0 (* Should never happen *)
-    in
-    let attackers = Movegen.compute_attackers_to pos king_sq opponent in
-    if Bitboard.is_empty attackers
-    then true, 0 (* Stalemate - draw *)
-    else true, -mate_score
-    (* Checkmate - we lost *))
-  else false, 0
-;;
-
 (** Helper function to increment int64 ref *)
 let incr_int64 = Search_common.incr_int64
 
@@ -137,11 +111,8 @@ let rec quiescence
           | [] -> alpha, best_move
           | mv :: rest ->
             let new_pos = Position.make_move pos mv in
-            (* Use safe negation to avoid overflow *)
-            let safe_neg_beta = if beta > 50000 then -50000 else -beta in
-            let safe_neg_alpha = if alpha < -50000 then 50000 else -alpha in
             let score, _ =
-              quiescence new_pos safe_neg_beta safe_neg_alpha nodes ~depth:(depth + 1) ()
+              quiescence new_pos (-beta) (-alpha) nodes ~depth:(depth + 1) ()
             in
             let score = -score in
             if score >= beta
@@ -158,6 +129,7 @@ let rec quiescence
 
 (** Alpha-beta search implementation with node counting and transposition table *)
 let rec alphabeta
+          ?(ply = 0)
           (pos : Position.t)
           (alpha : int)
           (beta : int)
@@ -177,35 +149,36 @@ let rec alphabeta
     match TranspositionTable.lookup tt pos_hash with
     | Some entry when entry.depth >= depth ->
       tt_move := entry.best_move;
+      let score = Score.of_tt entry.score ply in
       (match entry.entry_type with
        | Exact ->
          (* Exact score, return immediately *)
-         entry.score, entry.best_move
-       | LowerBound when entry.score >= beta ->
+         score, entry.best_move
+       | LowerBound when score >= beta ->
          (* Beta cutoff *)
-         entry.score, entry.best_move
-       | UpperBound when entry.score <= alpha ->
+         score, entry.best_move
+       | UpperBound when score <= alpha ->
          (* Alpha cutoff *)
-         entry.score, entry.best_move
+         score, entry.best_move
        | _ ->
          (* Continue search but use TT move for ordering *)
-         search_position pos depth alpha beta nodes pos_hash !tt_move prev_move)
+         search_position pos ply depth alpha beta nodes pos_hash !tt_move prev_move)
     | Some entry ->
       (* Entry exists but insufficient depth, use move for ordering *)
       tt_move := entry.best_move;
-      search_position pos depth alpha beta nodes pos_hash !tt_move prev_move
+      search_position pos ply depth alpha beta nodes pos_hash !tt_move prev_move
     | None ->
       (* No entry found *)
-      search_position pos depth alpha beta nodes pos_hash None prev_move)
+      search_position pos ply depth alpha beta nodes pos_hash None prev_move)
   else
     (* Transposition table disabled *)
-    search_position pos depth alpha beta nodes pos_hash None prev_move
+    search_position pos ply depth alpha beta nodes pos_hash None prev_move
 
 (** Helper function for the main search logic *)
-and search_position pos depth alpha beta nodes pos_hash tt_move prev_move =
+and search_position pos ply depth alpha beta nodes pos_hash tt_move prev_move =
   (* Check for terminal position *)
   let moves = Movegen.generate_moves pos in
-  match Search_common.Terminal.check pos moves with
+  match Search_common.Terminal.check pos moves ~ply with
   | Some score -> score, None
   | None ->
     if depth = 0
@@ -222,10 +195,8 @@ and search_position pos depth alpha beta nodes pos_hash tt_move prev_move =
         then (
           let null_pos = Search_common.NullMove.make_null_move pos in
           let null_depth = Search_common.NullMove.search_depth depth in
-          let safe_neg_beta = if beta > 50000 then -50000 else -beta in
-          let safe_neg_alpha = if beta - 1 < -50000 then 50000 else -(beta - 1) in
           let null_score, _ =
-            alphabeta null_pos safe_neg_beta safe_neg_alpha null_depth nodes None
+            alphabeta ~ply:(ply + 1) null_pos (-beta) (-(beta - 1)) null_depth nodes None
           in
           let null_score = -null_score in
           if null_score >= beta then Some beta (* Null move cutoff *) else None)
@@ -286,7 +257,13 @@ and search_position pos depth alpha beta nodes pos_hash tt_move prev_move =
                     then LowerBound
                     else Exact
                   in
-                  TranspositionTable.store tt pos_hash depth alpha best_move entry_type);
+                  TranspositionTable.store
+                    tt
+                    pos_hash
+                    depth
+                    (Score.to_tt alpha ply)
+                    best_move
+                    entry_type);
                 alpha, best_move
               | mv :: rest ->
                 move_count := !move_count + 1;
@@ -339,9 +316,6 @@ and search_position pos depth alpha beta nodes pos_hash tt_move prev_move =
                   in
                   (* Make move and search *)
                   let new_pos = Position.make_move pos mv in
-                  (* Use safe negation to avoid overflow *)
-                  let safe_neg_beta = if beta > 50000 then -50000 else -beta in
-                  let safe_neg_alpha = if alpha < -50000 then 50000 else -alpha in
                   (* Try reduced depth search first *)
                   let score, re_search =
                     if reduction > 0
@@ -349,9 +323,10 @@ and search_position pos depth alpha beta nodes pos_hash tt_move prev_move =
                       let reduced_depth = max 1 (depth - 1 - reduction) in
                       let reduced_score, _ =
                         alphabeta
+                          ~ply:(ply + 1)
                           new_pos
-                          safe_neg_beta
-                          safe_neg_alpha
+                          (-beta)
+                          (-alpha)
                           reduced_depth
                           nodes
                           (Some mv)
@@ -370,9 +345,10 @@ and search_position pos depth alpha beta nodes pos_hash tt_move prev_move =
                     then (
                       let full_score, _ =
                         alphabeta
+                          ~ply:(ply + 1)
                           new_pos
-                          safe_neg_beta
-                          safe_neg_alpha
+                          (-beta)
+                          (-alpha)
                           (depth - 1)
                           nodes
                           (Some mv)
@@ -389,7 +365,7 @@ and search_position pos depth alpha beta nodes pos_hash tt_move prev_move =
                         tt
                         pos_hash
                         depth
-                        final_score
+                        (Score.to_tt final_score ply)
                         (Some mv)
                         LowerBound;
                     (* Store as killer move if it's not a capture *)
@@ -487,7 +463,7 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
              - Eval.count_material pos (Color.opponent (Position.side_to_move pos))
            in
            let repetition_count = Eval.count_repetitions new_key game_history in
-           if repetition_count > 0
+           if repetition_count > 0 && not (Score.is_mate score)
            then (
              let base_penalty = 150 in
              let scaling = if repetition_count >= 2 then 2 else 1 in
@@ -545,23 +521,17 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
            !depth_nodes
            depth_elapsed;
          flush stderr);
-       (* Early termination for mate *)
-       if abs adjusted_score >= mate_threshold
+       (* Stop once a mate is found within the searched depth: deeper iterations
+          cannot find a shorter one *)
+       if Score.is_mate adjusted_score && Score.mate - abs adjusted_score <= current_depth
        then (
          if verbose
          then (
-           Printf.eprintf "Mate found at depth %d, stopping search\n" current_depth;
+           Printf.eprintf
+             "Mate in %d found at depth %d, stopping search\n"
+             (Score.mate_in_moves adjusted_score)
+             current_depth;
            flush stderr);
-         (* Convert mate score to mate-in-X *)
-         let mate_in = ((mate_score - abs adjusted_score) / 2) + 1 in
-         if verbose
-         then (
-           Printf.eprintf "Mate in %d moves\n" mate_in;
-           flush stderr);
-         (* Return result with mate score *)
-         let final_result = { current_result with score = adjusted_score } in
-         best_result := Some final_result;
-         (* Break out of loop early *)
          raise Exit)
      done
    with

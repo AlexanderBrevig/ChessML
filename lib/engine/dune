@@ -12,6 +12,7 @@
   pawn_cache
   piece_tables
   see
+  score
   search_common
   position
   magic

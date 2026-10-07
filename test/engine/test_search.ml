@@ -196,6 +196,54 @@ let test_search_bounds_safety_slow () =
   Alcotest.(check bool) "Deep search nodes is positive" true (result.nodes > 0L)
 ;;
 
+let test_mate_in_one () =
+  let game = Game.of_fen "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1" in
+  let result = Search.find_best_move ~verbose:false game 4 in
+  Alcotest.(check (option string))
+    "Back rank mate"
+    (Some "a1a8")
+    (Option.map Move.to_uci result.best_move);
+  Alcotest.(check int) "Mate in 1 score" (Score.mate - 1) result.score;
+  Alcotest.(check string) "UCI score" "mate 1" (Score.to_uci result.score)
+;;
+
+let _test_mate_in_two () =
+  (* 1.Ra6! bxa6 2.b7# *)
+  let game = Game.of_fen "kbK5/pp6/1P6/8/8/8/8/R7 w - - 0 1" in
+  let result = Search.find_best_move ~verbose:false game 5 in
+  Alcotest.(check (option string))
+    "Key move"
+    (Some "a1a6")
+    (Option.map Move.to_uci result.best_move);
+  Alcotest.(check int) "Mate in 2" 2 (Score.mate_in_moves result.score)
+;;
+
+let test_mated_side_score () =
+  (* Black is checkmated: no move, mated score *)
+  let game = Game.of_fen "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1" in
+  let result = Search.find_best_move ~verbose:false game 3 in
+  Alcotest.(check bool) "No move" true (result.best_move = None);
+  Alcotest.(check bool) "Mated score" true (Score.is_mate result.score && result.score < 0)
+;;
+
+let test_score_tt_roundtrip () =
+  List.iter
+    (fun (score, ply) ->
+       Alcotest.(check int)
+         (Printf.sprintf "score %d at ply %d" score ply)
+         score
+         (Score.of_tt (Score.to_tt score ply) ply))
+    [ 0, 5; 150, 3; Score.mate - 3, 1; Score.mated_in 7, 4; -42, 9 ];
+  Alcotest.(check int)
+    "mated at ply 3 is mate in -1"
+    (-1)
+    (Score.mate_in_moves (Score.mated_in 2));
+  Alcotest.(check int)
+    "mate at ply 3 is mate in 2"
+    2
+    (Score.mate_in_moves (Score.mate - 3))
+;;
+
 let () =
   let open Alcotest in
   run
@@ -204,6 +252,11 @@ let () =
       , [ test_case "Node counting works" `Quick test_node_counting
         ; test_case "Iterative deepening" `Quick test_iterative_deepening
         ; test_case "Search bounds safety" `Quick test_search_bounds_safety
+        ] )
+    ; ( "mate"
+      , [ test_case "Mate in one" `Quick test_mate_in_one
+        ; test_case "Mated side" `Quick test_mated_side_score
+        ; test_case "Score TT round trip" `Quick test_score_tt_roundtrip
         ] )
     ; ( "quiescence"
       , [ test_case

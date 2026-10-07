@@ -112,24 +112,19 @@ end
 
 (** Terminal position detection *)
 module Terminal : sig
-  (** Check if position is checkmate or stalemate, returns Some score or None *)
-  val check : Position.t -> Move.t list -> int option
+  (** Score a node with no legal moves: mated-at-[ply] for checkmate, draw for
+      stalemate; [None] if the move list is not empty *)
+  val check : Position.t -> Move.t list -> ply:int -> int option
 end
 
 (** Quiescence search helpers *)
 module Quiescence : sig
-  (** Maximum quiescence search depth *)
-  val max_depth : int
-
   (** Generate tactical moves for quiescence search *)
   val generate_tactical_moves : Position.t -> Move.t list
 
   (** Check if quiescence should prune a capture based on SEE *)
   val should_prune_capture : Position.t -> Move.t -> bool
 end
-
-(** Safe negation for alpha-beta bounds to avoid overflow *)
-val safe_negate : int -> int
 
 (** Check if the current side to move is in check *)
 val is_in_check : Position.t -> bool
@@ -143,9 +138,6 @@ module AlphaBeta : sig
   val initial_alpha : int
 
   val initial_beta : int
-
-  (** Mate score detection threshold *)
-  val mate_threshold : int
 
   (** Update alpha and best move based on search score *)
   val update_alpha_and_best : int -> int -> Move.t option -> Move.t -> int * Move.t option
