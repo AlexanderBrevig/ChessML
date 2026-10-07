@@ -239,18 +239,3 @@ let game_to_moves game =
   in
   go (start_position game) [] game.moves
 ;;
-
-(** Print statistics about a PGN file *)
-let file_stats filename =
-  let games = parse_file filename in
-  let total_games = List.length games in
-  let total_moves = List.fold_left (fun acc g -> acc + List.length g.moves) 0 games in
-  Printf.printf "File: %s\n" (Filename.basename filename);
-  Printf.printf "  Games: %d\n" total_games;
-  Printf.printf "  Total moves: %d\n" total_moves;
-  if total_games > 0
-  then
-    Printf.printf
-      "  Avg moves/game: %.1f\n"
-      (float_of_int total_moves /. float_of_int total_games)
-;;

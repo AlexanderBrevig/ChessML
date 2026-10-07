@@ -167,29 +167,6 @@ let compute_key pos =
     [ castling_key pos.castling_rights; ep_key pos; side_key pos.side_to_move ]
 ;;
 
-(** Put [piece] on [sq], replacing whatever stood there. Keeps bitboards, occupancy
-    and the piece part of the key consistent. *)
-let set_piece sq piece pos =
-  let board = Array.copy pos.board in
-  let pos =
-    match board.(sq) with
-    | Some old -> toggle pos old sq
-    | None -> pos
-  in
-  board.(sq) <- Some piece;
-  toggle { pos with board } piece sq
-;;
-
-(** Remove the piece on [sq], if any *)
-let clear_square sq pos =
-  match pos.board.(sq) with
-  | None -> pos
-  | Some old ->
-    let board = Array.copy pos.board in
-    board.(sq) <- None;
-    toggle { pos with board } old sq
-;;
-
 (** Remove the castling right tied to a rook's home square, if [sq] is one *)
 let clear_castling_on (rights : castling_rights array) sq =
   let w = rights.(0)

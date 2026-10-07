@@ -29,6 +29,3 @@ val start_position : game -> Position.t
 
 (** The game's moves from its start position, up to the first unresolvable one *)
 val game_to_moves : game -> Move.t list
-
-(** Print statistics about a PGN file *)
-val file_stats : string -> unit

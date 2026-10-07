@@ -1,10 +1,10 @@
 (library
  (name chessml_core)
  (public_name chessml.core)
- (flags
-  (:standard -w -32-69))
+ (instrumentation
+  (backend bisect_ppx))
  (foreign_stubs
   (language c)
   (names bitboard_stubs)
-  (flags :standard -O3 -march=native))
+  (flags :standard -O3))
  (modules types square bitboard move))

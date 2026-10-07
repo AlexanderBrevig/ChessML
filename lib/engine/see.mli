@@ -31,19 +31,3 @@ open Chessml_core
     - Knight takes bishop defended by knight: 0cp (equal trade)
 *)
 val evaluate : Position.t -> Move.t -> int
-
-(** Check if a capture wins or breaks even on material (SEE >= 0).
-    
-    @param pos Current position
-    @param move Move to evaluate
-    @return true if capture wins or equals material, false if it loses
-*)
-val is_winning_capture : Position.t -> Move.t -> bool
-
-(** Check if a capture loses material (SEE < 0).
-    
-    @param pos Current position  
-    @param move Move to evaluate
-    @return true if capture loses material, false otherwise
-*)
-val is_losing_capture : Position.t -> Move.t -> bool

@@ -77,7 +77,10 @@ val all : t list
 val of_uci : string -> t
 val to_uci : t -> string
 val to_string : t -> string
+
+(** King (Chebyshev) distance: the number of king moves between two squares *)
 val distance : t -> t -> int
+
 val forward : t -> color -> int -> t option
 val backward : t -> color -> int -> t option
 val rank_relative_to : t -> color -> t

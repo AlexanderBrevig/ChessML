@@ -105,12 +105,13 @@ let to_uci sq =
 
 let to_string = to_uci
 
+(** King (Chebyshev) distance: the number of king moves between two squares *)
 let distance sq1 sq2 =
   let f1 = File.to_int (file sq1) in
   let f2 = File.to_int (file sq2) in
   let r1 = Rank.to_int (rank sq1) in
   let r2 = Rank.to_int (rank sq2) in
-  abs (f1 - f2) + abs (r1 - r2)
+  max (abs (f1 - f2)) (abs (r1 - r2))
 ;;
 
 let forward sq color n =

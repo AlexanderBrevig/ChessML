@@ -430,14 +430,3 @@ let piece_square_value (piece : piece) (sq : Square.t) : int =
   | Queen -> queen_table.(table_sq)
   | King -> king_middlegame_table.(table_sq)
 ;;
-
-(** Get total value of a piece on a square: material + positional bonus *)
-let piece_total_value (piece : piece) (sq : Square.t) : int =
-  PieceKind.value piece.kind + piece_square_value piece sq
-;;
-
-(** Get total value for a piece kind on a square (requires color for PST lookup) *)
-let piece_kind_total_value (kind : piece_kind) (color : color) (sq : Square.t) : int =
-  let piece = { kind; color } in
-  piece_total_value piece sq
-;;

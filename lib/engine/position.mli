@@ -13,8 +13,6 @@ type t
 val fen_startpos : string
 val empty_board : unit -> board
 val piece_at : t -> Square.t -> Types.piece option
-val set_piece : Square.t -> Types.piece -> t -> t
-val clear_square : Square.t -> t -> t
 val side_to_move : t -> Types.color
 val ep_square : t -> Square.t option
 val halfmove : t -> int

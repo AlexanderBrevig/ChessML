@@ -80,6 +80,3 @@ let evaluate (pos : Position.t) (move : Move.t) : int =
     gain.(0)
   | Some _ -> 0
 ;;
-
-let is_winning_capture pos move = evaluate pos move >= 0
-let is_losing_capture pos move = evaluate pos move < 0

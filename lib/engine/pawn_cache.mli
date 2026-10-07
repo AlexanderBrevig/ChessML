@@ -5,9 +5,6 @@ type t
 (** Create a new pawn cache; size is rounded up to a power of two *)
 val create : int -> t
 
-(** Create default cache (64K entries) *)
-val create_default : unit -> t
-
 (** Probe cache for a pawn structure. Scores are white minus black. *)
 val probe : t -> white_pawns:Int64.t -> black_pawns:Int64.t -> int option
 
@@ -25,6 +22,3 @@ val get_global : unit -> t
 
 (** Clear global pawn cache *)
 val clear_global : unit -> unit
-
-(** Get global cache statistics *)
-val global_stats : unit -> int * int * float

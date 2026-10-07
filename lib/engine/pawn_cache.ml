@@ -27,9 +27,6 @@ let create size =
 (** Default cache size *)
 let default_size = 65536
 
-(** Create default cache *)
-let create_default () = create default_size
-
 (** Mix both bitboards into a well-distributed table index *)
 let index cache white_pawns black_pawns =
   let open Int64 in
@@ -73,13 +70,10 @@ let stats cache =
 ;;
 
 (** Global pawn cache *)
-let global_cache = create_default ()
+let global_cache = create default_size
 
 (** Get global cache *)
 let get_global () = global_cache
 
 (** Clear global cache *)
 let clear_global () = clear global_cache
-
-(** Get global cache statistics *)
-let global_stats () = stats global_cache

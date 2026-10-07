@@ -1,10 +1,9 @@
 (** Move - Chess move representation and utilities
     
-    Encodes chess moves efficiently using 16 bits: from square, to square, and move type.
-    Supports all move types including quiet moves, captures, castling, en passant,
-    and promotions. Provides conversions to/from UCI notation and algebraic notation.
-    
-    Move encoding: bits 0-5: from, 6-11: to, 12-15: move kind
+    A move is a record of origin square, destination square and move kind (quiet,
+    double push, castle, capture, en passant, promotion). Castling is stored as the
+    king's two-square move. Converts to and from UCI coordinate notation; use
+    [Game.find_move] to turn a string into a legal move with the right kind.
 *)
 
 open Types
