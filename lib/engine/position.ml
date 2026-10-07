@@ -669,3 +669,30 @@ let draw_board pos =
   done;
   Printf.printf "    a   b   c   d   e   f   g   h\n"
 ;;
+
+(** Dead position by material (FIDE 9.6): bare kings, a single minor piece, or only
+    bishops that all stand on squares of the same color *)
+let has_insufficient_material pos =
+  let pawns_rooks_queens =
+    List.fold_left
+      Int64.logor
+      0L
+      [ pos.white_pawns
+      ; pos.black_pawns
+      ; pos.white_rooks
+      ; pos.black_rooks
+      ; pos.white_queens
+      ; pos.black_queens
+      ]
+  in
+  if pawns_rooks_queens <> 0L
+  then false
+  else (
+    let knights = Int64.logor pos.white_knights pos.black_knights in
+    let bishops = Int64.logor pos.white_bishops pos.black_bishops in
+    let light_squares = 0x55AA55AA55AA55AAL in
+    Bitboard.population (Int64.logor knights bishops) <= 1
+    || (knights = 0L
+        && (Int64.logand bishops light_squares = 0L
+            || Int64.logand bishops (Int64.lognot light_squares) = 0L)))
+;;

@@ -86,7 +86,7 @@ let test_draw_insufficient_material_k_vs_kn () =
 ;;
 
 let test_draw_insufficient_material_kb_vs_kb () =
-  let fen = "8/8/8/4kb2/8/8/4KB2/8 w - - 0 1" in
+  let fen = "8/8/8/4kb2/8/8/3KB3/8 w - - 0 1" in
   let game = Game.of_fen fen in
   Alcotest.(check bool) "King+Bishop vs King+Bishop is a draw" true (Game.is_draw game)
 ;;

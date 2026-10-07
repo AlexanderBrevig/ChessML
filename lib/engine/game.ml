@@ -93,89 +93,21 @@ let is_threefold_repetition game =
   check_every_other game.history >= 3
 ;;
 
-(** Count pieces of a specific kind and color on the board *)
-let count_pieces_on_board pos kind color =
-  let bb = Position.get_pieces pos color kind in
-  Bitboard.population bb
-;;
-
-(** Get truly legal moves (now using improved movegen) *)
-let get_truly_legal_moves pos = Movegen.generate_moves pos
-
-(** Check if there is insufficient material for checkmate (FIDE Article 9.6) *)
-let has_insufficient_material pos =
-  (* Count all pieces for both colors *)
-  let count_white kind = count_pieces_on_board pos kind Types.White in
-  let count_black kind = count_pieces_on_board pos kind Types.Black in
-  let white_knights = count_white Types.Knight in
-  let white_bishops = count_white Types.Bishop in
-  let white_rooks = count_white Types.Rook in
-  let white_queens = count_white Types.Queen in
-  let white_pawns = count_white Types.Pawn in
-  let black_knights = count_black Types.Knight in
-  let black_bishops = count_black Types.Bishop in
-  let black_rooks = count_black Types.Rook in
-  let black_queens = count_black Types.Queen in
-  let black_pawns = count_black Types.Pawn in
-  (* Any pawns, rooks, or queens means sufficient material *)
-  if
-    white_pawns > 0
-    || black_pawns > 0
-    || white_rooks > 0
-    || black_rooks > 0
-    || white_queens > 0
-    || black_queens > 0
-  then false
-  else (
-    (* Now we only have kings, knights, and bishops *)
-    let white_minors = white_knights + white_bishops in
-    let black_minors = black_knights + black_bishops in
-    (* King vs King *)
-    if white_minors = 0 && black_minors = 0
-    then true (* King + minor vs King *)
-    else if
-      (white_minors = 1 && black_minors = 0) || (white_minors = 0 && black_minors = 1)
-    then
-      true
-      (* King + Bishop vs King + Bishop (same color bishops) *)
-      (* This is a simplified check - proper implementation would check bishop square colors *)
-    else if
-      white_knights = 0 && black_knights = 0 && white_bishops = 1 && black_bishops = 1
-    then true
-    else false)
-;;
-
-(** Check if the game is a draw according to FIDE rules *)
+(** Check if the game is a draw according to FIDE rules: fifty-move rule, threefold
+    repetition, insufficient material or stalemate *)
 let is_draw game =
   let pos = game.position in
-  (* 1. Fifty-move rule: Draw if halfmove clock >= 100 (50 full moves) *)
-  if Position.halfmove pos >= 100
-  then true (* 2. Threefold repetition *)
-  else if is_threefold_repetition game
-  then true (* 3. Insufficient material *)
-  else if has_insufficient_material pos
-  then true
-  (* 4. Stalemate: No legal moves and not in check *)
-  else (
-    let truly_legal_moves = get_truly_legal_moves pos in
-    if List.length truly_legal_moves = 0
-    then (
-      (* No legal moves - could be checkmate or stalemate *)
-      (* Check if the king is in check *)
-      let king_square = ref None in
-      for sq = 0 to 63 do
-        match Position.piece_at pos sq with
-        | Some p
-          when p.Types.color = Position.side_to_move pos && p.Types.kind = Types.King ->
-          king_square := Some sq
-        | _ -> ()
-      done;
-      match !king_square with
-      | None -> false (* No king found - invalid position *)
-      | Some sq ->
-        let opponent = Types.Color.opponent (Position.side_to_move pos) in
-        let attackers = Movegen.compute_attackers_to pos sq opponent in
-        (* If king is not attacked, it's stalemate (draw) *)
-        Bitboard.is_empty attackers)
-    else false (* Has legal moves, not a draw by these rules *))
+  Position.halfmove pos >= 100
+  || is_threefold_repetition game
+  || Position.has_insufficient_material pos
+  || (legal_moves game = []
+      &&
+      let side = Position.side_to_move pos in
+      let king_sq =
+        if side = Types.White
+        then Position.white_king_sq pos
+        else Position.black_king_sq pos
+      in
+      Bitboard.is_empty
+        (Movegen.compute_attackers_to pos king_sq (Types.Color.opponent side)))
 ;;

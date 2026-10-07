@@ -47,7 +47,11 @@ let test_draw_insufficient_material () =
   Alcotest.(check bool) "KN vs K is a draw" true (Game.is_draw game);
   (* KB vs K *)
   let game = Game.of_fen "8/8/8/4k3/8/8/4KB2/8 w - - 0 1" in
-  Alcotest.(check bool) "KB vs K is a draw" true (Game.is_draw game)
+  Alcotest.(check bool) "KB vs K is a draw" true (Game.is_draw game);
+  let game = Game.of_fen "7k/8/8/8/8/8/1b6/K1B5 w - - 0 1" in
+  Alcotest.(check bool) "KB vs KB same color is a draw" true (Game.is_draw game);
+  let game = Game.of_fen "7k/8/8/8/8/8/1b6/KB6 w - - 0 1" in
+  Alcotest.(check bool) "KB vs KB opposite colors is not a draw" false (Game.is_draw game)
 ;;
 
 let test_draw_fifty_move_rule () =

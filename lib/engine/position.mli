@@ -31,6 +31,10 @@ val get_pieces : t -> Types.color -> Types.piece_kind -> Bitboard.t
 
 val get_color_pieces : t -> Types.color -> Bitboard.t
 val count_non_pawn_material : t -> Types.color -> int
+
+(** Dead position by material: bare kings, one minor, or same-colored bishops only *)
+val has_insufficient_material : t -> bool
+
 val make_move : t -> Move.t -> t
 val make_null_move : t -> t
 val of_fen : string -> t

@@ -50,8 +50,8 @@ let count_repetitions = Eval_endgame.count_repetitions
 let evaluate_repetition_incentive = Eval_endgame.evaluate_repetition_incentive
 let evaluate_fifty_move_incentive = Eval_endgame.evaluate_fifty_move_incentive
 
-(** Main evaluation function - orchestrates all evaluation components *)
-let evaluate ?(history = []) (pos : Position.t) : int =
+(** Sum of all evaluation components, from the side to move's perspective *)
+let evaluate_position ~history (pos : Position.t) : int =
   let side = Position.side_to_move pos in
   let opponent = Color.opponent side in
   (* Helper: sum positional values for a piece type bitboard *)
@@ -167,4 +167,9 @@ let evaluate ?(history = []) (pos : Position.t) : int =
   + fifty_move_incentive
   + rook_endgame_bonus
   + ladder_mate_bonus
+;;
+
+(** Score from the side to move's perspective in centipawns; 0 for dead positions *)
+let evaluate ?(history = []) (pos : Position.t) : int =
+  if Position.has_insufficient_material pos then 0 else evaluate_position ~history pos
 ;;
