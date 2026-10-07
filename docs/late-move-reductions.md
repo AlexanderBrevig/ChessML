@@ -3,446 +3,86 @@ layout: default
 title: Late Move Reductions
 parent: Chess Programming Guide
 nav_order: 8
-description: "Search later moves at reduced depth for efficiency"
+description: "My notes on searching late, quiet moves less deeply"
 permalink: /docs/late-move-reductions
 ---
 
-# Late Move Reductions (LMR)
+# Late Move Reductions
 
-## What Is Late Move Reductions?
+These are my notes on late move reductions (LMR), written while adding them to ChessML. They describe how I understand the technique and what ChessML does; for the real reference, see the [Chess Programming Wiki](https://www.chessprogramming.org/Late_Move_Reductions).
 
-Late Move Reductions (LMR) is a technique where you search later moves in the move list at reduced depth, based on the assumption that good [move ordering](move-ordering.md) means later moves are unlikely to be best. If a reduced search proves this assumption wrong, you re-search at full depth.
+## The idea
 
-**Elo Impact:** ~100-200 Elo. This is one of the most effective search techniques in modern chess engines, often allowing you to effectively search 1-2 plies deeper.
+If [move ordering]({% link docs/move-ordering.md %}) works, the best move in a position is usually among the first few that get searched. The quiet moves at the end of the list rarely turn out to be best. LMR bets on that: those late moves get a shallower search than the early ones.
 
-## The Core Idea
+A bet can be lost, so a reduced search that comes back better than expected is not trusted. The move is searched again at the normal depth, and only that result counts. When ordering is good, most late moves fail low at the reduced depth and are never looked at again, and the depth saved goes into the moves that matter. People report that LMR is one of the techniques that matters most; I have not measured what it gives ChessML.
 
-With good [move ordering](move-ordering.md):
+## How it fits with PVS
 
-- First few moves (10-20%) contain the best move ~90% of the time
-- Later moves (80-90%) are usually inferior
-
-Instead of searching all moves to the same depth, search "late" moves at reduced depth. If one looks good at reduced depth, re-search it at full depth to verify.
-
-**Key insight:** Most moves are bad. Spending full effort on all moves wastes time. Search promising moves deeply, questionable moves shallowly.
-
-## Basic Algorithm
+ChessML's search is principal variation search (see [Alpha-Beta Pruning]({% link docs/alpha-beta-pruning.md %})): the first move gets the full window, every later move first gets a null window `(alpha, alpha + 1)` that only answers "is this better than alpha?". LMR slots into that null-window probe. For every move after the first, `search_moves` in `lib/engine/search.ml` does up to three searches (shortened):
 
 ```ocaml
-let rec search_moves moves depth alpha beta move_count =
-  match moves with
-  | [] -> alpha, None
-  | mv :: rest ->
-    move_count := !move_count + 1;
-
-    (* Determine if we can reduce this move *)
-    let can_reduce =
-      !move_count >= 3           (* Don't reduce first 2-3 moves *)
-      && depth >= 3              (* Need sufficient depth *)
-      && not (is_capture mv)     (* Don't reduce captures *)
-      && not (gives_check mv)    (* Don't reduce checks *)
-      && not (is_killer mv)      (* Don't reduce killers *)
-    in
-
-    let reduction =
-      if can_reduce then
-        calculate_reduction depth !move_count
-      else 0
-    in
-
-    (* Try reduced search *)
-    let score =
-      if reduction > 0 then
-        let reduced_depth = max 1 (depth - 1 - reduction) in
-        let s, _ = alphabeta new_pos reduced_depth (-beta) (-alpha) in
-        let s = -s in
-
-        (* If reduced search beats alpha, re-search at full depth *)
-        if s > alpha then
-          let full_s, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-          -full_s
-        else
-          s
-      else
-        (* No reduction, search at full depth *)
-        let s, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-        -s
-    in
-
-    if score >= beta then
-      score, Some mv  (* Beta cutoff *)
-    else
-      let new_alpha = max alpha score in
-      search_moves rest depth new_alpha beta move_count
+let reduced_depth = max 0 (depth - 1 - reduction) in
+(* 1. null window, possibly reduced *)
+let s = search child ~alpha ~beta:(alpha + 1) ~depth:reduced_depth mv in
+(* 2. it beat alpha at reduced depth: same null window at full depth *)
+let s =
+  if s > alpha && reduction > 0
+  then search child ~alpha ~beta:(alpha + 1) ~depth:(depth - 1) mv
+  else s
+in
+(* 3. at a PV node, a score inside the window needs the exact value *)
+if s > alpha && s < beta && pv_node
+then search child ~alpha ~beta ~depth:(depth - 1) mv
+else s
 ```
 
-## When to Reduce
+Step 2 is the important one. Any score above alpha from the reduced search gets verified at full depth, including one that reaches beta. At a non-PV node beta is already alpha + 1, so "above alpha" and "fails high" are the same thing there, and without step 2 the reduced result would cause the cutoff. Step 3 only ever runs at PV nodes, because only there is the window wider than one point.
 
-### Always safe to reduce:
+A PV node is simply one with an open window, `beta - alpha > 1`. Whether alpha has been raised yet in this node is a different question.
 
-**1. Late in move list** (move number >= 3-4)
+## When ChessML reduces
+
+A move is reduced only if all of these hold:
+
+- the remaining depth is at least 3;
+- it is not among the first few moves: `move_count > 3`, or `move_count > 5` at a PV node;
+- it is quiet: not a capture and not a promotion (`LMR.is_tactical_move`);
+- it does not give check, and the side to move is not in check;
+- it is not a killer move for this ply.
+
+How much to reduce comes from a table in `lib/engine/search_common.ml`, filled at startup with `ln(depth) * ln(move_number) / 2.5`, rounded, and at least 1 (entries for depth below 3 or move number below 4 are 0). Some values:
+
+| depth \ move | 4 | 6 | 10 | 20 | 40 |
+| --- | --- | --- | --- | --- | --- |
+| 3 | 1 | 1 | 1 | 1 | 2 |
+| 6 | 1 | 1 | 2 | 2 | 3 |
+| 12 | 1 | 2 | 2 | 3 | 4 |
+| 20 | 2 | 2 | 3 | 4 | 4 |
+
+The table value is then adjusted a little (this is the real function):
 
 ```ocaml
-let move_threshold = 3 in
-if move_count >= move_threshold then ...
+let reduction depth move_count ~is_pv ~history_score =
+  let base = reduction_table.(min 63 depth).(min 63 move_count) in
+  let adjust = (if is_pv then 1 else 0) + if history_score > 1000 then 1 else 0 in
+  max 1 (base - adjust)
 ```
 
-**2. Sufficient depth** (depth >= 3)
+So PV nodes and moves with a good [history score]({% link docs/move-ordering.md %}#history-heuristic) (`History.get_score st.history mv`) are reduced one ply less, but every move that qualifies is reduced by at least one ply. The reduced depth is clamped at 0, not 1, so a late move near the leaves can go straight into [quiescence search]({% link docs/quiescence-search.md %}).
 
-```ocaml
-if depth >= 3 then ...
-```
+## What ChessML does not do
 
-**Why:** Need enough depth for reduction to be meaningful and for re-search to catch mistakes.
+Stronger engines adjust the reduction by more things: whether the static eval is improving compared to two plies ago, whether a move has a bad history (reduce more), whether the TT move is a capture, and so on. ChessML has none of that; history can only lower its reductions, never raise them. It also has late move pruning and futility pruning next to LMR (in the same loop, at non-PV nodes only), which skip some late quiet moves outright instead of reducing them.
 
-### Never reduce:
+## Pitfalls
 
-**1. Tactical moves** (captures, promotions)
+- **Trusting a reduced fail-high.** If the reduced null-window search beats alpha, search again at full depth before using the score. Testing `score < beta` instead does nothing at non-PV nodes, where beta is alpha + 1.
+- **Reducing tactical moves.** Captures, promotions and checks can change the evaluation a lot in one move, so they are normally not reduced. Forgetting promotions in the "tactical" test is easy.
+- **Reducing while in check.** In check there are few legal moves and all of them are forced; reducing them hides mates.
+- **Reducing too early.** The first moves (TT move, good captures, killers) are where the best move usually is; reducing them throws away the benefit of ordering.
 
-```ocaml
-if is_capture mv || is_promotion mv then
-  reduction = 0
-```
+## Sources
 
-**Why:** Tactical moves can dramatically change evaluation. Missing tactics is catastrophic.
-
-**2. Moves giving check**
-
-```ocaml
-if gives_check pos mv then
-  reduction = 0
-```
-
-**Why:** Checks are forcing and can lead to tactics or checkmate.
-
-**3. Killer moves**
-
-```ocaml
-if is_killer mv depth then
-  reduction = 0
-```
-
-**Why:** [Killers](move-ordering.md#killer-move-heuristic) are quiet moves that previously caused cutoffs—they're likely strong.
-
-**4. PV nodes** (where alpha has been raised)
-
-```ocaml
-let is_pv = alpha != original_alpha in
-if is_pv then
-  reduction = 0  (* Or reduced reduction *)
-```
-
-**Why:** PV nodes are on the main variation—these moves are critical to search accurately.
-
-## Calculating Reduction
-
-### Simple Fixed Reduction
-
-```ocaml
-let reduction depth move_count =
-  if depth >= 3 && move_count >= 3 then 1
-  else 0
-```
-
-Reduce by 1 ply for late moves at sufficient depth.
-
-### Adaptive Reduction
-
-```ocaml
-let reduction depth move_count =
-  if depth < 3 || move_count < 3 then 0
-  else if depth >= 6 && move_count >= 6 then 2
-  else 1
-```
-
-Deeper searches and later moves get more aggressive reduction.
-
-### Logarithmic Formula (Tournament Strength)
-
-```ocaml
-let reduction depth move_count =
-  if depth < 3 || move_count < 3 then 0
-  else
-    (* Base reduction using logarithmic formula *)
-    let base =
-      int_of_float (log (float depth) *. log (float move_count) /. 2.0) in
-    max 1 (min base (depth - 2))
-```
-
-**Why logarithmic?**
-
-- Move 3 at depth 6: reduction = 1
-- Move 10 at depth 6: reduction = 2
-- Move 20 at depth 10: reduction = 3
-
-Scales naturally with both depth and move number.
-
-### Adjustments Based on Context
-
-```ocaml
-let reduction depth move_count ~is_pv ~improving ~gives_check ~history_score =
-  let base = base_reduction depth move_count in
-
-  let base = base - (if is_pv then 1 else 0) in
-  let base = base - (if improving then 1 else 0) in
-  let base = base - (if gives_check then 2 else 0) in
-  let base = base - (if history_score > 1000 then 1 else 0) in
-  let base = base + (if history_score < -1000 then 1 else 0) in
-
-  max 0 base  (* Don't reduce below 0 *)
-```
-
-**Factors:**
-
-- **PV node:** Reduce less (or not at all)
-- **Improving position:** Reduce less (evaluation increasing)
-- **Gives check:** Reduce much less (or not at all)
-- **High history score:** Reduce less (move has been good before)
-- **Low history score:** Reduce more (move has failed before)
-
-## Re-Search Logic
-
-Critical: If reduced search shows move might be good, re-search at full depth:
-
-```ocaml
-(* Try reduced search *)
-let score_reduced = search_reduced new_pos reduced_depth (-beta) (-alpha) in
-
-if score_reduced > alpha then
-  (* Reduced search suggests this move is good - verify! *)
-  let score_full = search_full new_pos (depth - 1) (-beta) (-alpha) in
-  score_full
-else
-  (* Reduced search confirms move is bad, accept result *)
-  score_reduced
-```
-
-**Cost:** Some moves need two searches (reduced + full)
-**Benefit:** Most moves only need one (reduced) search
-**Net result:** Massive time savings (~50% node reduction)
-
-## Principal Variation Search (PVS) + LMR
-
-Combine [PVS](alpha-beta-pruning.md#principal-variation-search-pvs) with LMR for maximum efficiency:
-
-```ocaml
-if move_count = 1 then
-  (* First move: full window, no reduction *)
-  let score, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-  -score
-else
-  (* Later moves: try zero window + reduction *)
-  let reduction = calculate_reduction depth move_count in
-  let reduced_depth = max 1 (depth - 1 - reduction) in
-
-  (* Zero window search at reduced depth *)
-  let score, _ = alphabeta new_pos reduced_depth (-alpha - 1) (-alpha) in
-  let score = -score in
-
-  if score > alpha then
-    (* Failed high on reduced zero window - re-search *)
-    if score < beta then
-      (* Re-search with full window at full depth *)
-      let score, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-      -score
-    else
-      score  (* Beta cutoff *)
-  else
-    score  (* Move is bad as expected *)
-```
-
-This combines three optimizations:
-
-1. PVS zero window for non-PV nodes
-2. LMR reduction for late moves
-3. Re-search only when necessary
-
-## Complete Implementation
-
-```ocaml
-let rec search_moves moves depth alpha beta move_count =
-  match moves with
-  | [] -> alpha, None
-  | mv :: rest ->
-    move_count := !move_count + 1;
-    let is_first = !move_count = 1 in
-
-    (* Calculate reduction *)
-    let is_tactical = is_capture mv || is_promotion mv in
-    let gives_check = gives_check_fast pos mv in
-    let is_killer = is_killer mv depth in
-    let can_reduce =
-      not is_first
-      && depth >= 3
-      && !move_count >= 3
-      && not is_tactical
-      && not gives_check
-      && not is_killer
-    in
-
-    let reduction =
-      if can_reduce then
-        let is_pv = alpha != original_alpha in
-        let history = History.get_score mv in
-        calculate_reduction depth !move_count ~is_pv ~history
-      else 0
-    in
-
-    (* Make move *)
-    let new_pos = make_move pos mv in
-
-    (* Search with appropriate depth and window *)
-    let score =
-      if is_first then
-        (* First move: full window, full depth *)
-        let s, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-        -s
-      else if reduction > 0 then
-        (* Late move with reduction: reduced depth + zero window *)
-        let reduced_depth = max 1 (depth - 1 - reduction) in
-        let s, _ = alphabeta new_pos reduced_depth (-alpha - 1) (-alpha) in
-        let s = -s in
-
-        (* Re-search if necessary *)
-        if s > alpha && s < beta then
-          let s, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-          -s
-        else
-          s
-      else
-        (* Late move without reduction: zero window *)
-        let s, _ = alphabeta new_pos (depth - 1) (-alpha - 1) (-alpha) in
-        let s = -s in
-
-        (* Re-search if necessary *)
-        if s > alpha && s < beta then
-          let s, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-          -s
-        else
-          s
-    in
-
-    (* Check for cutoff *)
-    if score >= beta then
-      score, Some mv
-    else
-      let new_alpha = max alpha score in
-      search_moves rest depth new_alpha beta move_count
-```
-
-## Common Pitfalls
-
-### 1. Reducing Tactical Moves
-
-```ocaml
-(* Wrong: *)
-let reduction = calculate_reduction depth move_count in
-
-(* Correct: *)
-let reduction =
-  if is_capture mv || gives_check mv then 0
-  else calculate_reduction depth move_count
-```
-
-### 2. Not Re-Searching
-
-```ocaml
-(* Wrong: Trust reduced search *)
-let score = search_reduced new_pos reduced_depth alpha beta in
-
-(* Correct: Re-search if promising *)
-let score_reduced = search_reduced ... in
-if score_reduced > alpha then
-  let score_full = search_full ... in
-  score_full
-else
-  score_reduced
-```
-
-### 3. Reducing Too Aggressively
-
-```ocaml
-(* Wrong: Reduce by too much *)
-let reduction = depth / 2 in
-
-(* Correct: Conservative reduction *)
-let reduction = log(depth) * log(move_count) / 2.0 in
-let reduction = max 1 (min reduction (depth - 2)) in
-```
-
-### 4. Reducing First Moves
-
-```ocaml
-(* Wrong: *)
-for all moves do
-  let reduction = calculate_reduction ... in
-
-(* Correct: *)
-if move_count >= 3 then
-  let reduction = calculate_reduction ... in
-else
-  let reduction = 0 in
-```
-
-## Measuring Effectiveness
-
-Track LMR statistics:
-
-```ocaml
-type lmr_stats = {
-  reductions: int;        (* Times LMR applied *)
-  re_searches: int;       (* Times re-search needed *)
-  reduction_total: int;   (* Sum of all reductions *)
-}
-
-let avg_reduction stats =
-  float stats.reduction_total /. float stats.reductions
-
-let re_search_rate stats =
-  float stats.re_searches /. float stats.reductions
-```
-
-Good LMR performance:
-
-- **Reduction rate:** 40-60% of moves reduced
-- **Average reduction:** 1.5-2.5 plies
-- **Re-search rate:** 10-20% (most reduced searches confirm bad moves)
-- **Node reduction:** 40-60% fewer nodes searched
-- **Strength:** No measurable loss (or slight gain from deeper search)
-
-## Tuning Reduction Formula
-
-The logarithmic formula is standard but can be tuned:
-
-```ocaml
-(* Conservative: *)
-let reduction = log(depth) * log(move_count) / 3.0
-
-(* Aggressive: *)
-let reduction = log(depth) * log(move_count) / 1.5
-
-(* Custom: *)
-let reduction =
-  (log(depth) * 0.5) + (log(move_count) * 0.4)
-```
-
-Run test matches to find optimal values for your engine. Start conservative and increase aggression as other parts improve.
-
-## LMR Synergy
-
-LMR works best with:
-
-- **Good [move ordering](move-ordering.md):** Hash moves, killers, history
-- **[Transposition tables](transposition-tables.md):** Avoid re-searching transpositions
-- **[Null move pruning](null-move-pruning.md):** Double reduction effect
-- **[PVS](alpha-beta-pruning.md#principal-variation-search-pvs):** Zero window searches are faster
-
-Combined, these techniques can make your engine 5-10x faster!
-
-## Further Reading
-
-- [Move Ordering](move-ordering.md) - Critical for LMR effectiveness
-- [Alpha-Beta Pruning](alpha-beta-pruning.md) - Base search algorithm
-- [Null Move Pruning](null-move-pruning.md) - Complementary pruning
-- [Chess Programming Wiki - Late Move Reductions](https://www.chessprogramming.org/Late_Move_Reductions)
-- `lib/engine/search.ml` - See LMR implementation
+- [Chess Programming Wiki: Late Move Reductions](https://www.chessprogramming.org/Late_Move_Reductions)
+- ChessML's code: `lib/engine/search.ml` (`search_moves`), `lib/engine/search_common.ml` (`LMR`), `lib/engine/history.ml`

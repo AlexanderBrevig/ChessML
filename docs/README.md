@@ -2,204 +2,74 @@
 layout: default
 title: Developer Guide
 nav_order: 3
-description: "ChessML codebase architecture and development workflow"
+description: "How the ChessML code is organized and how I work on it"
 permalink: /docs/developer-guide
 ---
 
-# ChessML Developer Guide
+# Developer guide
 
-> **Learning chess programming?** Start with the **[Chess Programming Concepts Guide](chess-programming-guide)** for detailed explanations of all techniques used in this engine.
+How the code is laid out, for when I come back to it after a break (and for anyone curious). The technique pages under [Chess Programming Guide]({% link docs/chess-programming-guide.md %}) explain the ideas; this page is only about where things live.
 
-This document covers the codebase architecture and development workflow for ChessML contributors.
+## Libraries
 
----
+The code is split into three dune libraries, re-exported together as `Chessml`:
 
-## 🏗️ Codebase Architecture
+**`lib/core`**: the basic types
 
-### Core Modules (`lib/core/`)
+- `Types` (colors, pieces), `Square` (a1 = 0 … h8 = 63), `Move` (from, to and a move kind)
+- `Bitboard`, with three C helpers in `bitboard_stubs.c` (lowest bit, highest bit, bit count)
 
-- **Bitboard**: 64-bit bitwise board representation with C-accelerated operations
-- **Square**: Board square representation (0-63 indexing)
-- **Move**: Encoded move representation with type safety
-- **Types**: Fundamental chess types (pieces, colors, etc.)
+**`lib/engine`**: everything about playing chess
 
-### Engine Modules (`lib/engine/`)
+| Module | What it does |
+| --- | --- |
+| `Position` | Immutable position: a 64-square array, bitboards per piece and color, and the hash key, all kept in sync by `make_move` |
+| `Zobrist`, `Polyglot_random` | The hash keys (the published Polyglot ones, so the position key is also the book key) |
+| `Magic`, `Movegen` | Attack tables and legal move generation; `Movegen.attackers_to` is the one function everything uses to ask "who attacks this square?" |
+| `Game` | A position plus the keys of earlier positions (for repetitions); `Game.find_move` turns `"e2e4"` or `"O-O"` into a legal move |
+| `Eval`, `Eval_pawn_structure`, `Eval_pieces`, `Eval_king_safety`, `Eval_endgame`, `Piece_tables`, `Pawn_cache` | The evaluation, split by topic |
+| `See` | Static exchange evaluation |
+| `Search`, `Search_common`, `Score`, `Killers`, `History`, `Countermoves` | The search and its helpers; mate scores live in `Score` |
+| `Polyglot`, `Opening_book`, `Pgn_parser` | Reading books and parsing PGN (for building books) |
+| `Config` | Search options that the protocols can change |
 
-- **Position**: Game state management with Zobrist hashing
-- **Movegen**: Legal move generation using magic bitboards
-- **Search**: Alpha-beta search with iterative deepening
-- **Eval**: Static evaluation with material and positional scoring
-- **Game**: High-level game management and move validation
-- **Polyglot**: Binary format for storing books
+**`lib/protocols`**: `Uci` and `Xboard`, plus `Protocol_common` for what they share (options, book access, time budgeting). The UCI search runs on its own thread so `stop` works; XBoard thinks synchronously.
 
-### Protocol Support (`lib/protocols/`)
+The programs in `bin/` are thin wrappers: the two engines, `create_book`, and `play_from`.
 
-- **UCI**: Universal Chess Interface protocol
-- **XBoard**: XBoard/WinBoard protocol
+## The board: array and bitboards
 
----
+`Position` stores the board twice: a 64-entry array answers "what is on e4?" in one lookup, and bitboards answer "where are all the white knights?" in one lookup. Keeping two copies is only safe if nothing can update one without the other, so every piece change in `make_move` goes through a single helper (`toggle`) that also updates the hash key. Positions are immutable: `make_move` returns a new position and copies the array.
 
-## 🧪 Testing Strategy
+## Tests
 
-### Unit Tests (`test/`)
+- `test/core`: bitboards, squares, moves, types
+- `test/engine`: perft (move generation against published node counts), position and hash consistency, evaluation symmetry, SEE, search (mates, repetitions), opening book and PGN parsing, special moves
+- `test/protocols`: UCI and XBoard sessions, fed one command at a time
 
-- **Core Tests**: Bitboard, move generation, types
-- **Engine Tests**: Position, evaluation, search
-- **Protocol Tests**: UCI/XBoard compliance
-- **Special Moves**: Castling, en passant, promotion
-- **Regression Tests**: Bug fix validation
+Tests catch bugs, but they say little about strength. For that I play games, see "Strength" in the [README](https://github.com/AlexanderBrevig/ChessML#strength).
 
-### Benchmarks (`examples/`)
-
-- **Search Benchmarks**: Fixed-depth search NPS and per-component timing
-
----
-
-## ️ Build System
-
-### Dune Build Files
-
-- **Modular structure**: Separate libraries for core/engine/protocols
-- **Test integration**: Alcotest framework
-- **Public binaries**: UCI and XBoard executables
-- **Examples**: Benchmarks and demonstrations
-
-### Key Commands
+## Working on it
 
 ```bash
-dune build                    # Build all targets
-dune runtest                  # Run all tests
-dune exec bin/chessml_uci.exe # Run UCI engine
-just test-protocols           # Run protocol tests
-```
-
----
-
-## 💡 Key Implementation Notes
-
-For detailed explanations of these concepts, see the [Chess Programming Concepts Guide](chess-programming-guide.md).
-
-### Hybrid Board Representation
-
-ChessML uses **both** a board array and bitboards for optimal performance:
-
-**Board Array (`piece option array`)** - O(1) "What piece is on square X?"
-
-- Used in: move making, castling logic, capture detection, PGN parsing
-- Example: `piece_at pos Square.e4` → instant lookup
-
-**12 Piece-Type Bitboards** - O(1) "Where are all pieces of type X?"
-
-- Used in: material counting, move generation, attack detection
-- Example: `get_pieces pos White Knight` → all white knight positions
-
-**Why both?**
-
-Without board array (bitboards only):
-
-```ocaml
-(* Finding what's on e4 requires 12 bitboard checks *)
-let piece_at sq =
-  if contains white_pawns sq then Some WhitePawn
-  else if contains white_knights sq then Some WhiteKnight
-  else (* ...10 more checks... *)
-```
-
-Without bitboards (array only):
-
-```ocaml
-(* Material counting requires 64 array lookups *)
-let count_material () =
-  for sq = 0 to 63 do
-    match board.(sq) with
-    | Some piece -> total := !total + value piece
-    | None -> ()
-  done
-```
-
-**The hybrid approach** gives O(1) performance for both access patterns at the cost of ~2KB memory and keeping them synchronized during move making. This is standard in modern engines (Stockfish, Leela, etc.).
-
-### Other Core Concepts
-
-- **Move Representation**: record of from/to squares and move kind (see `lib/core/move.ml`)
-- **Zobrist Hashing**: Polyglot keys, maintained incrementally by `Position.make_move` (see `lib/engine/zobrist.ml`)
-- **Polyglot Books**: Binary format for opening books (see `lib/engine/polyglot.ml` and `examples/polyglot_demo.ml`)
-
----
-
-## 🔧 Development Workflow
-
-### Running Tests
-
-```bash
-dune runtest                  # Run all tests
-just test                     # Alternative via justfile
-```
-
-### Code Formatting
-
-```bash
-dune fmt                      # Format all code
-ocamlformat --inplace file.ml # Format specific file
-```
-
-### Building
-
-```bash
-dune build                    # Debug build
-dune build --profile=release  # Optimized build
-```
-
-### Benchmarking
-
-```bash
+dune build                       # debug build
+dune build --profile=release     # use this for playing and benchmarks
+dune runtest                     # all tests, a few seconds
+just format                      # ocamlformat 0.27.0
 dune exec --profile=release examples/search_bench.exe
 ```
 
----
+Contributions are welcome, see [CONTRIBUTING.md](https://github.com/AlexanderBrevig/ChessML/blob/main/CONTRIBUTING.md).
 
-## 📈 Future Ideas
+## Things I would like to try
 
-- Remove `Position.board` field (use bitboards only)
-- NNUE evaluation
-- Smarter time management (e.g. extend on unstable best move)
-- Syzygy tablebase support
-- Lazy SMP parallel search
+- Generating pawn moves set-wise instead of one pawn at a time
+- A tapered evaluation and some endgame technique
+- Tuning the evaluation against real games
+- Lazy SMP (several search threads sharing one table)
 
----
-
-## 💡 Contributing
-
-1. **Run tests** before submitting: `dune runtest`
-2. **Format code**: Use `dune fmt` for consistency
-3. **Add tests** for new features
-4. **Update docs** when adding techniques
-5. **Benchmark** performance-critical changes
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for more details.
-
----
-
-## 📚 Documentation
-
-**New to chess programming?** Start with the **[Chess Programming Concepts Guide](chess-programming-guide.md)**
-
-This comprehensive guide explains all the techniques used in ChessML, with detailed explanations of why they matter and how to implement them.
-
-### External Resources
-
-**Chess Programming:**
+## Other resources
 
 - [Chess Programming Wiki](https://www.chessprogramming.org/)
-- [Stockfish](https://github.com/official-stockfish/Stockfish) - World's strongest open-source engine
-- [Ethereal](https://github.com/AndyGrant/Ethereal) - Clean modern engine
-
-**OCaml:**
-
-- [Real World OCaml](https://dev.realworldocaml.org/)
-- [OCaml Manual](https://ocaml.org/manual/)
-- [Dune Documentation](https://dune.readthedocs.io/)
-
----
-
-**Happy Chess Programming! ♟️**
+- [Stockfish](https://github.com/official-stockfish/Stockfish), the strongest open-source engine
+- [Real World OCaml](https://dev.realworldocaml.org/) and the [OCaml manual](https://ocaml.org/manual/)

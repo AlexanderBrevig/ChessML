@@ -3,428 +3,109 @@ layout: default
 title: Zobrist Hashing
 parent: Chess Programming Guide
 nav_order: 3
-description: "Fast incremental position hashing for transposition tables"
+description: "My notes on giving each position a 64-bit key that is cheap to update"
 permalink: /docs/zobrist-hashing
 ---
 
 # Zobrist Hashing
 
-## What Is Zobrist Hashing?
+These are my notes on how ChessML turns a position into a single 64-bit number. They describe how I understand it and what ChessML does; the real reference is the [Chess Programming Wiki](https://www.chessprogramming.org/Zobrist_Hashing).
 
-Zobrist hashing is a technique for generating unique (almost) 64-bit hash keys for chess positions. These keys are used by transposition tables to quickly identify identical positions reached through different move orders.
+## The idea
 
-**Elo Impact:** Enables transposition tables (~200-300 Elo). Without Zobrist hashing, you can't efficiently implement transposition tables.
+An engine often needs to ask "have I seen this position before?": in the [transposition table]({% link docs/transposition-tables.md %}), to spot repetitions, and to look the position up in an [opening book]({% link docs/opening-books.md %}). Comparing whole boards is slow, so each position gets a 64-bit key instead.
 
-## Why It Matters
+Zobrist's scheme: give every possible feature of a position its own random 64-bit number, and XOR together the numbers for the features that are present. The features are:
 
-Chess positions can be reached through different move sequences:
+- a piece of a given kind and color on a given square (12 × 64 = 768 numbers),
+- each castling right,
+- the en passant file,
+- whose turn it is.
 
-```
-1. e4 e5 2. Nf3 Nc6  ← Same position
-1. Nf3 Nc6 2. e4 e5  ← Different moves
-```
+What makes this nice is that XOR undoes itself: `k XOR r XOR r = k`. So when a move changes the position, you do not start over. You XOR out what disappeared and XOR in what appeared:
 
-You need a way to:
+- a quiet move: XOR the piece out on its old square and in on its new one,
+- a capture: also XOR the captured piece out on the square where it stood (for en passant that is not the target square, but the square behind it),
+- a promotion: XOR the pawn out and the new piece in,
+- castling: the king's move plus the rook's move,
+- then fix up castling rights, en passant and the side to move the same way.
 
-1. **Quickly** identify if two positions are identical (microseconds)
-2. **Uniquely** represent each position with a small key (64 bits)
-3. **Incrementally** update the key as moves are made (no full recalculation)
+The key is not unique. There are far more positions than 64-bit numbers, so different positions can share a key. More on that below.
 
-Zobrist hashing does all three!
+## What ChessML does
 
-## The Core Idea
+### The random numbers
 
-Pre-generate random 64-bit numbers for every possible board component:
+ChessML does not generate its own random numbers. It uses the 781 published "Random64" values from the [Polyglot book format](http://hgm.nubati.net/book_format.html), copied into `lib/engine/polyglot_random.ml`. Because of that, a position's key is also its Polyglot book key, and one key serves the transposition table, repetition detection and the opening book.
 
-- Each piece type on each square (e.g., white pawn on e4)
-- Side to move (white or black)
-- Castling rights (4 possibilities: KQkq)
-- En passant square (8 files)
-
-To compute a position's hash, **XOR together** the random numbers for all components present.
-
-**Key property of XOR:** `A ⊕ A = 0` and `A ⊕ 0 = A`
-
-This means you can **incrementally update** hashes by XORing in changes!
-
-## Random Number Generation
-
-Generate random 64-bit numbers **once at startup**:
+The 781 values are laid out as 768 piece-square keys, 4 castling keys (one per right: white short, white long, black short, black long), 8 en passant file keys and 1 side-to-move key. `lib/engine/zobrist.ml` just indexes into that array:
 
 ```ocaml
-(* Random numbers for pieces on squares *)
-let piece_keys = Array.make_matrix 64 12 0L
+let piece_key piece sq = random64.((64 * polyglot_piece_kind piece) + sq)
 
-(* Initialize with random numbers *)
-let init_piece_keys () =
-  Random.init 0x42;  (* Fixed seed for reproducibility *)
-  for sq = 0 to 63 do
-    for piece = 0 to 11 do  (* 6 piece types × 2 colors *)
-      piece_keys.(sq).(piece) <- Random.int64 Int64.max_int
-    done
-  done
+let castling_key ~color ~short =
+  random64.(768 + (if color = White then 0 else 2) + if short then 0 else 1)
+;;
 
-(* Other random values *)
-let side_to_move_key = Random.int64 Int64.max_int
-let castling_keys = Array.init 16 (fun _ -> Random.int64 Int64.max_int)
-let en_passant_keys = Array.init 8 (fun _ -> Random.int64 Int64.max_int)
+let ep_file_key file = random64.(772 + file)
+let white_to_move_key = random64.(780)
 ```
 
-{: .important }
+Two Polyglot details are easy to get backwards:
 
-> **Important:** Use a **fixed seed** so the random numbers are the same every time the program runs. This ensures positions hash consistently across sessions.
+- The side-to-move key is XORed in when **White** is to move.
+- The en passant file is only hashed when a pawn of the side to move stands next to the pawn that just made a double push, so a capture is at least possible. After 1. e4 there is an en passant square, but no black pawn can take, so it does not count. ChessML does this in `Position.ep_key`.
 
-> ChessML goes one step further and uses the fixed table from the Polyglot opening book format (`lib/engine/polyglot_random.ml`), so the position key doubles as the book key. Position keeps it up to date incrementally in `make_move`.
+If you generate your own keys instead, use a fixed seed (`Random.init 42`) so the keys are the same on every run, which matters if you ever save anything keyed by them. `Random.bits64 ()` gives all 64 bits; `Random.int64 Int64.max_int` only gives 63.
 
-## Computing Initial Hash
+### Keeping the key up to date
 
-For a starting position, XOR together all components:
+`Position` is immutable, and `make_move` builds the new position by removing and adding pieces through one helper, `toggle` (in `lib/engine/position.ml`). It flips the piece's bit in the bitboards and XORs its Zobrist key in the same step, so adding and removing are the same operation and the key cannot fall behind the board. Shortened:
 
 ```ocaml
-let compute_hash pos =
-  let hash = ref 0L in
-
-  (* XOR in all pieces *)
-  for sq = 0 to 63 do
-    match Position.piece_at pos sq with
-    | Some piece ->
-      let piece_index = piece_to_index piece in
-      hash := Int64.logxor !hash piece_keys.(sq).(piece_index)
-    | None -> ()
-  done;
-
-  (* XOR in side to move *)
-  if Position.side_to_move pos = Black then
-    hash := Int64.logxor !hash side_to_move_key;
-
-  (* XOR in castling rights *)
-  let castling_index = castling_rights_to_index pos in
-  hash := Int64.logxor !hash castling_keys.(castling_index);
-
-  (* XOR in en passant *)
-  (match Position.en_passant_square pos with
-   | Some sq ->
-     let file = sq mod 8 in
-     hash := Int64.logxor !hash en_passant_keys.(file)
-   | None -> ());
-
-  !hash
+let toggle pos piece sq =
+  let bit = Bitboard.of_square sq in
+  let x = Int64.logxor in
+  let occupied = x pos.occupied bit in
+  let key = x pos.key (Zobrist.piece_key piece sq) in
+  (* ... then flip [bit] in the piece and color bitboards ... *)
 ```
 
-## Incremental Updates
-
-**This is the magic!** When making a move, you don't recompute the entire hash. Instead:
-
-1. **Remove** the piece from its old square: `hash ⊕ piece_key[from][piece]`
-2. **Add** the piece to its new square: `hash ⊕ piece_key[to][piece]`
-3. **Update** side to move: `hash ⊕ side_to_move_key`
-4. **Update** castling/en passant as needed
-
-### Example: Simple Move
+Captures, en passant, promotions and castling are all just calls to `remove` and `put`, which use `toggle`. For example, the capture in `make_move` knows that an en passant victim stands behind the target square:
 
 ```ocaml
-(* Moving white pawn from e2 to e4 *)
-let update_hash_for_move hash move =
-  let from_sq = move.from in
-  let to_sq = move.to_ in
-  let piece = move.piece in
-
-  (* Remove piece from source square *)
-  let piece_idx = piece_to_index piece in
-  hash := Int64.logxor !hash piece_keys.(from_sq).(piece_idx);
-
-  (* Add piece to destination square *)
-  hash := Int64.logxor !hash piece_keys.(to_sq).(piece_idx);
-
-  (* Toggle side to move *)
-  hash := Int64.logxor !hash side_to_move_key;
-
-  !hash
+let captured_sq =
+  if Move.is_en_passant mv
+  then if side = White then to_sq - 8 else to_sq + 8
+  else to_sq
+in
+Option.iter (remove captured_sq) board.(captured_sq);
 ```
 
-### Example: Capture
+At the end, `make_move` XORs out the old castling rights, en passant key and side to move and XORs in the new ones. `Position.key` returns the result.
 
-```ocaml
-(* If a capture, also remove captured piece *)
-match move.captured with
-| Some captured_piece ->
-  let captured_idx = piece_to_index captured_piece in
-  hash := Int64.logxor !hash piece_keys.(to_sq).(captured_idx)
-| None -> ()
-```
+There is also `Position.compute_key`, which builds the key from scratch by looping over the board. Apart from `Position.of_fen`, which uses it once to set up the first key, it is there so tests can check that the incremental key always agrees with it. `test/engine/test_position.ml` walks a whole move tree and compares the two at every node, and `test/engine/test_zobrist.ml` checks the keys against the test positions published with the Polyglot format (the start position must give `0x463b96181691fc9c`, and so on).
 
-### Example: Castling
+### Repetitions
 
-```ocaml
-(* Update both king and rook *)
-if move.is_castle then begin
-  (* Remove king from e1 *)
-  hash := Int64.logxor !hash piece_keys.(4).(white_king_idx);
-  (* Add king to g1 or c1 *)
-  hash := Int64.logxor !hash piece_keys.(move.to_).(white_king_idx);
-  (* Remove rook from h1 or a1 *)
-  hash := Int64.logxor !hash piece_keys.(rook_from).(white_rook_idx);
-  (* Add rook to f1 or d1 *)
-  hash := Int64.logxor !hash piece_keys.(rook_to).(white_rook_idx);
-end
-```
+`Game` keeps the list of keys of every position so far, and the search keeps the keys along the current path. A position is a repetition if its key appears earlier, looking back two plies at a time and no further than the last capture or pawn move (`is_repetition` in `lib/engine/search.ml`).
 
-## Castling Rights Encoding
+## Collisions
 
-Castling rights have 16 possible states (4 bits: KQkq):
+Two different positions with the same key will happen eventually. How rare is it? With n random 64-bit keys, the expected number of pairs that share a key is about n² / 2^65. For a billion positions that is 10^18 / 3.7 × 10^19, roughly 0.03. I find that reassuring, but it also means a long enough run will hit one.
 
-```ocaml
-let castling_index rights =
-  let index = ref 0 in
-  if rights.white_kingside then index := !index lor 1;
-  if rights.white_queenside then index := !index lor 2;
-  if rights.black_kingside then index := !index lor 4;
-  if rights.black_queenside then index := !index lor 8;
-  !index
-```
+ChessML stores the full key in each transposition table entry and only trusts an entry whose key matches, so a wrong hit needs a full 64-bit collision. Even then, the stored move is only used to order the moves the move generator produced, so it can never make the engine play an illegal move; the worst case is a wrong score for one node.
 
-When castling rights change:
+## Pitfalls
 
-```ocaml
-(* Remove old castling state *)
-hash := Int64.logxor !hash castling_keys.(old_index);
-(* Add new castling state *)
-hash := Int64.logxor !hash castling_keys.(new_index);
-```
+- **En passant hashed when no capture is possible.** Then the same position gets two keys depending on how it was reached, repetitions are missed and book lookups fail. ChessML had this bug.
+- **Turn key for the wrong side.** Harmless for your own table, but every Polyglot book lookup misses.
+- **Forgetting part of a move.** The en passant victim on the wrong square, the promoted piece never XORed in, the castling rook not moved, or a castling right lost when a rook is captured on its home square. A test comparing the incremental key against a from-scratch key over a perft tree finds these quickly.
+- **Trusting a hash move blindly.** After a collision the stored move may not be legal in the current position; check it against the generated moves before playing it.
+- **Applying moves from a GUI without matching them.** If "e1g1" is applied as an ordinary king move, the rook and castling keys are never updated. ChessML looks such strings up with `Game.find_move`.
 
-## En Passant Encoding
+## Sources
 
-Only the **file** matters (not the rank) since en passant squares are always on rank 3 or 6:
-
-```ocaml
-(* Clear old en passant *)
-match old_ep_square with
-| Some sq ->
-  let file = sq mod 8 in
-  hash := Int64.logxor !hash en_passant_keys.(file)
-| None -> ()
-
-(* Set new en passant *)
-match new_ep_square with
-| Some sq ->
-  let file = sq mod 8 in
-  hash := Int64.logxor !hash en_passant_keys.(file)
-| None -> ()
-```
-
-## Piece Encoding
-
-Map pieces to array indices:
-
-```ocaml
-let piece_to_index piece =
-  let color_offset = if piece.color = White then 0 else 6 in
-  let kind_offset = match piece.kind with
-    | Pawn -> 0
-    | Knight -> 1
-    | Bishop -> 2
-    | Rook -> 3
-    | Queen -> 4
-    | King -> 5
-  in
-  color_offset + kind_offset
-
-(* 0-11: white pieces, black pieces *)
-```
-
-## Hash Collisions
-
-With 64-bit hashes and ~10^43 possible positions, collisions are theoretically possible but extremely rare:
-
-**Probability:** ~1 in 10^19 for any two positions
-
-In practice:
-
-- Search might examine ~10^9 positions
-- Expected collisions: ~10^-10 (once per billion games)
-- **Verify with full position comparison** if critical
-
-Most engines **don't verify** because collisions are so rare they don't affect play.
-
-## Verification
-
-Test that your Zobrist implementation is correct:
-
-```ocaml
-let test_zobrist () =
-  let pos = Position.from_fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" in
-
-  (* Compute full hash *)
-  let hash1 = Position.key pos in
-
-  (* Make move and update incrementally *)
-  let move = Move.make ~from:12 ~to_:28 ~piece:{color=White; kind=Pawn} in
-  let pos2 = Position.make_move pos move in
-  let hash2 = Position.hash pos2 in
-
-  (* Recompute from scratch *)
-  let hash3 = Position.key pos2 in
-
-  (* Should match! *)
-  assert (hash2 = hash3)
-```
-
-## Complete Implementation
-
-```ocaml
-module Zobrist = struct
-  (* Random keys *)
-  let piece_keys = Array.make_matrix 64 12 0L
-  let side_key = ref 0L
-  let castling_keys = Array.make 16 0L
-  let ep_keys = Array.make 8 0L
-
-  (* Initialize once at startup *)
-  let init () =
-    Random.init 0x1234567890ABCDEFL;
-    for sq = 0 to 63 do
-      for pc = 0 to 11 do
-        piece_keys.(sq).(pc) <- Random.int64 Int64.max_int
-      done
-    done;
-    side_key := Random.int64 Int64.max_int;
-    for i = 0 to 15 do
-      castling_keys.(i) <- Random.int64 Int64.max_int
-    done;
-    for i = 0 to 7 do
-      ep_keys.(i) <- Random.int64 Int64.max_int
-    done
-
-  (* Compute hash from scratch *)
-  let compute pos =
-    let hash = ref 0L in
-
-    (* Pieces *)
-    for sq = 0 to 63 do
-      match Position.piece_at pos sq with
-      | Some p ->
-        let idx = piece_to_index p in
-        hash := Int64.logxor !hash piece_keys.(sq).(idx)
-      | None -> ()
-    done;
-
-    (* Side to move *)
-    if Position.side_to_move pos = Black then
-      hash := Int64.logxor !hash !side_key;
-
-    (* Castling *)
-    let castle_idx = castling_index pos in
-    hash := Int64.logxor !hash castling_keys.(castle_idx);
-
-    (* En passant *)
-    (match Position.en_passant_square pos with
-     | Some sq ->
-       let file = sq mod 8 in
-       hash := Int64.logxor !hash ep_keys.(file)
-     | None -> ());
-
-    !hash
-
-  (* Update hash for a piece move *)
-  let hash_piece hash square piece =
-    let idx = piece_to_index piece in
-    Int64.logxor hash piece_keys.(square).(idx)
-
-  (* Toggle side to move *)
-  let hash_side hash =
-    Int64.logxor hash !side_key
-
-  (* Update castling *)
-  let hash_castling hash old_idx new_idx =
-    hash
-    |> Int64.logxor castling_keys.(old_idx)
-    |> Int64.logxor castling_keys.(new_idx)
-
-  (* Update en passant *)
-  let hash_ep hash old_sq new_sq =
-    let hash = match old_sq with
-      | Some sq -> Int64.logxor hash ep_keys.(sq mod 8)
-      | None -> hash
-    in
-    match new_sq with
-    | Some sq -> Int64.logxor hash ep_keys.(sq mod 8)
-    | None -> hash
-end
-```
-
-## Common Pitfalls
-
-{: .warning }
-
-> **Common Pitfall:** Not using a fixed seed leads to different hashes each run!
-
-### 1. Not Using Fixed Seed
-
-```ocaml
-(* Wrong: Different hashes each run *)
-Random.self_init ()
-
-(* Correct: Reproducible hashes *)
-Random.init 0x42
-```
-
-### 2. Forgetting to Toggle Side
-
-```ocaml
-(* Wrong: Same side to move *)
-let new_hash = update_pieces old_hash move in
-
-(* Correct: Toggle side *)
-let new_hash =
-  update_pieces old_hash move
-  |> Int64.logxor side_to_move_key
-```
-
-### 3. Double-XORing
-
-```ocaml
-(* Wrong: XOR piece twice (removes it!) *)
-hash := Int64.logxor !hash piece_key;
-hash := Int64.logxor !hash piece_key;  (* Now it's gone! *)
-
-(* Correct: XOR once to toggle *)
-hash := Int64.logxor !hash piece_key
-```
-
-### 4. Wrong Castling Update
-
-```ocaml
-(* Wrong: Only remove old *)
-hash := Int64.logxor !hash old_castling_key
-
-(* Correct: Remove old AND add new *)
-hash := Int64.logxor !hash old_castling_key
-hash := Int64.logxor !hash new_castling_key
-```
-
-## Performance
-
-Zobrist hashing is **extremely fast**:
-
-- Compute: ~64 XOR operations (~10 ns)
-- Update: ~4-6 XOR operations (~1 ns)
-
-This is why it's perfect for transposition tables accessed millions of times per second.
-
-## Alternative: Polyglot Format
-
-The Polyglot opening book format uses a specific Zobrist hashing scheme. If you want your engine to read Polyglot books, implement their exact random key generation:
-
-```ocaml
-(* Polyglot uses specific keys from a standard *)
-let polyglot_piece_keys = [| ... |]  (* Fixed values *)
-```
-
-See [Opening Books](opening-books.md) for details.
-
-## Further Reading
-
-- [Transposition Tables](transposition-tables.md) - Why you need Zobrist hashing
-- [Chess Programming Wiki - Zobrist Hashing](https://www.chessprogramming.org/Zobrist_Hashing)
-- [Polyglot Book Format](http://hgm.nubati.net/book_format.html)
-- `lib/engine/zobrist.ml` - See implementation
+- [Chess Programming Wiki: Zobrist Hashing](https://www.chessprogramming.org/Zobrist_Hashing), for the idea
+- [Polyglot opening book format](http://hgm.nubati.net/book_format.html), for the key layout, the en passant rule and the test positions
+- ChessML's code: [`lib/engine/zobrist.ml`](https://github.com/AlexanderBrevig/ChessML/blob/main/lib/engine/zobrist.ml), [`lib/engine/polyglot_random.ml`](https://github.com/AlexanderBrevig/ChessML/blob/main/lib/engine/polyglot_random.ml), [`lib/engine/position.ml`](https://github.com/AlexanderBrevig/ChessML/blob/main/lib/engine/position.ml), [`test/engine/test_zobrist.ml`](https://github.com/AlexanderBrevig/ChessML/blob/main/test/engine/test_zobrist.ml)

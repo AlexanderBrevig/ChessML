@@ -3,349 +3,102 @@ layout: default
 title: Null Move Pruning
 parent: Chess Programming Guide
 nav_order: 7
-description: "Aggressive pruning by giving opponent a free move"
+description: "My notes on pruning by letting the opponent move twice"
 permalink: /docs/null-move-pruning
 ---
 
 # Null Move Pruning
 
-## What Is Null Move Pruning?
+These are my notes on null move pruning. They describe how I understand it and what ChessML does; for the real reference, see the [Chess Programming Wiki](https://www.chessprogramming.org/Null_Move_Pruning).
 
-Null move pruning is a technique where you let the opponent move twice in a row. If they still can't beat your [beta threshold](alpha-beta-pruning.md) even with this huge advantage, the position is so good for you that you can safely prune it.
+## The idea
 
-**Elo Impact:** ~100-150 Elo. This aggressive pruning technique dramatically reduces search time with minimal accuracy loss.
+In almost every chess position, having the move is an advantage: there is nearly always something useful to do. Null move pruning turns that into a test. Before searching a node properly, pretend the side to move passes (a "null move") and let the opponent move again, with a shallower search. If my position is still at or above beta even after giving the opponent a free move, then with a real move it will very likely be at least as good, so the node can be cut off without searching any real moves.
 
-## The Core Idea
+The test is cheap because it uses a null window (only "is it at least beta?") and a reduced depth. The reduction is called R: the null move is searched to `depth - 1 - R` instead of `depth - 1`.
 
-In chess, having the move is valuable—roughly 15-50 centipawns. If you give your opponent an extra move (pass your turn, make a "null move"), and they _still_ can't beat beta, then the position is so good that you can stop searching and return beta.
+## When passing would help: zugzwang
 
-**Key insight:** If even giving the opponent a free move doesn't help them, you must have overwhelming advantage. Opponent won't let the game reach this position, so you can prune this branch.
+The assumption "a move is never worse than passing" is false in zugzwang, where every legal move makes things worse. It mostly happens in endgames with few pieces, typically king and pawn endings. A classic example is the trébuchet, a mutual zugzwang: the two pawns block each other, each king stands guarding its own pawn while attacking the other one, and whoever has to move must step away and lose their pawn (and usually the game). In a position like that, the null move test says "even if I pass, I am fine", while in fact the side to move is lost precisely because it cannot pass.
 
-## How It Works
+The usual protection, and the one ChessML uses, is to skip the null move when the side to move has nothing but its king and pawns. Pieces give it spare moves, so zugzwang is rarer then (not impossible).
 
-```ocaml
-let rec alphabeta pos depth alpha beta =
-  (* ... existing checks ... *)
+## What ChessML does
 
-  (* Try null move pruning *)
-  if can_do_null_move pos depth beta then begin
-    (* Make null move: swap sides without moving pieces *)
-    let null_pos = make_null_move pos in
-
-    (* Search at reduced depth *)
-    let null_depth = depth - 1 - null_reduction in
-    let score, _ = alphabeta null_pos null_depth (-beta) (-beta + 1) in
-    let score = -score in
-
-    (* If null move causes beta cutoff, prune this branch *)
-    if score >= beta then
-      return beta  (* Null move cutoff *)
-  end;
-
-  (* Continue normal search *)
-  ...
-```
-
-## When to Use Null Move
-
-### Don't use null move when:
-
-**1. In check**
+From `search_node` in `lib/engine/search.ml` (shortened; `can_prune` is defined just above it):
 
 ```ocaml
-let in_check = is_king_attacked pos in
-if in_check then
-  (* Skip null move - can't pass when in check *)
+let can_prune = (not pv_node) && (not in_check) && abs beta < Score.mate_bound in
+...
+if can_prune
+   && null_ok
+   && depth >= 3
+   && static_eval >= beta
+   && Position.count_non_pawn_material pos side > 0
+then (
+  let r = if depth > 6 then 3 else 2 in
+  let score =
+    -alphabeta ctx (Position.make_null_move pos)
+       ~alpha:(-beta) ~beta:(-beta + 1)
+       ~depth:(depth - 1 - r) ~ply:(ply + 1)
+       ~prev_move:None ~null_ok:false
+  in
+  if score >= beta
+  then Some (if Score.is_mate score then beta else score)
+  else None)
 ```
 
-**Why:** It's illegal to stay in check. Also, being in check often means you're in trouble, not ahead.
+So a null move is only tried when:
 
-**2. In zugzwang positions**
+- the node is not a PV node (null-window nodes only);
+- the side to move is not in check (passing out of check is not a legal position);
+- beta is not a mate score;
+- `null_ok` is set, which it is not right after another null move;
+- at least 3 plies are left;
+- the static evaluation is already at or above beta, so a cutoff is plausible;
+- the side to move has at least one knight, bishop, rook or queen (`Position.count_non_pawn_material`), against zugzwang.
 
-```ocaml
-let zugzwang_likely =
-  only_king_and_pawns pos || endgame pos in
-if zugzwang_likely then
-  (* Skip null move - passing might actually help *)
-```
+R is 2, or 3 when more than 6 plies are left. If the null search fails high, ChessML returns its score (fail-soft), except when that score is a mate: a mate found after a pass is not a real mate, so it returns plain beta then.
 
-**Why:** In some positions (especially king and pawn endgames), passing your turn _helps_ you. Example: If you have to move but any move loses, passing would be better.
+The child is called with `~null_ok:false`. Two null moves in a row would not break anything, but they cancel out: the same position comes back with the same side to move, just shallower, so the search would only waste depth on it.
 
-**3. Already did null move recently**
+### Making the null move
 
-```ocaml
-(* Track if parent node used null move *)
-if parent_used_null_move then
-  (* Skip null move - prevents double null move *)
-```
-
-**Why:** Can't give opponent two free moves in a row—leads to invalid positions.
-
-**4. Low depth**
-
-```ocaml
-if depth < 3 then
-  (* Skip null move - not enough depth to be useful *)
-```
-
-**Why:** Need enough depth to get meaningful verification. At depth 2, reduced depth becomes too shallow.
-
-## Null Move Reduction
-
-How much to reduce depth? Common formulas:
-
-**Fixed reduction (simple):**
-
-```ocaml
-let null_reduction = 2 in
-let null_depth = depth - 1 - null_reduction in
-(* depth 6 -> null depth 3 *)
-```
-
-**Adaptive reduction (better):**
-
-```ocaml
-let null_reduction depth =
-  if depth >= 6 then 3
-  else 2
-in
-(* Deeper searches use more aggressive reduction *)
-```
-
-**Formula-based (tournament engines):**
-
-```ocaml
-let null_reduction depth eval beta =
-  let base_reduction = 3 in
-  let depth_bonus = max 0 ((depth - 6) / 3) in
-  let eval_bonus = if eval - beta > 200 then 1 else 0 in
-  base_reduction + depth_bonus + eval_bonus
-in
-```
-
-Typical values: **R = 2 to 3** (reduce by 2-3 plies)
-
-## Making the Null Move
+`Position.make_null_move` in `lib/engine/position.ml` flips the side to move, clears the en passant square and bumps the halfmove clock. It also has to keep the hash key right, by XORing out the en passant key (if one was hashed) and flipping the side-to-move key:
 
 ```ocaml
 let make_null_move pos =
+  let key =
+    List.fold_left Int64.logxor pos.key [ ep_key pos; Zobrist.white_to_move_key ]
+  in
   { pos with
-    side_to_move = Color.opponent pos.side_to_move;
-    en_passant_square = None;  (* Clear en passant *)
-    halfmove_clock = pos.halfmove_clock + 1;
-    fullmove_number =
-      if pos.side_to_move = Black
-      then pos.fullmove_number + 1
-      else pos.fullmove_number;
+    side_to_move = Color.opponent pos.side_to_move
+  ; ep_square = None
+  ; halfmove = pos.halfmove + 1
+  ; key
   }
 ```
 
-**Important:**
+Without the key update, the position after a null move shares its key with the position before it, and the transposition table mixes up the two.
 
-- Swap side to move
-- Clear en passant (can't capture en passant after null move)
-- Don't move any pieces!
-- Update move counters
+## Things ChessML does not do
 
-## Verification Search
+- **Verification search.** Some engines, when the null move fails high, run a reduced normal search to confirm it before cutting, as extra protection against zugzwang.
+- **Mate threat detection.** If the null search shows that the opponent mates after a pass, the position contains a serious threat; some engines extend the search there. ChessML just carries on with the normal search.
+- **A larger R based on how far the eval is above beta.** ChessML only looks at depth.
 
-To avoid zugzwang problems, some engines do **verification search**:
+The other pruning margins (futility, reverse futility, razoring, late move pruning) live in [`search_common.ml`](https://github.com/AlexanderBrevig/ChessML/blob/main/lib/engine/search_common.ml).
 
-```ocaml
-if score >= beta then
-  (* Null move suggests cutoff, but verify *)
-  if likely_zugzwang pos then
-    (* Do reduced depth search to verify *)
-    let verify_depth = depth - null_reduction in
-    let verify_score, _ = alphabeta pos verify_depth alpha beta in
-    if verify_score >= beta then
-      return beta  (* Verified cutoff *)
-    else
-      (* False cutoff, continue normal search *)
-      continue_search ()
-  else
-    return beta  (* Not zugzwang risk, trust cutoff *)
-```
+## Pitfalls
 
-Most engines **skip verification** for performance—zugzwang is rare enough that the speed gain outweighs occasional errors.
+- **Null move while in check.** The resulting position has the side not to move in check, which cannot happen in a legal game, and the search returns nonsense. Test for check first.
+- **Two null moves in a row.** Not wrong, but useless: the second one undoes the first and the remaining depth is wasted. Pass a flag to the child.
+- **Forgetting the hash key.** The side-to-move key and the en passant key must be updated like in a real move.
+- **Zugzwang in pawn endings.** Without a material condition the engine misjudges king and pawn endings, where zugzwang is common.
+- **Trusting mate scores from the null search.** Returning a "mate" that depends on a pass gives wrong mate scores; return beta instead.
 
-## Complete Implementation
+## Sources
 
-```ocaml
-let rec alphabeta pos depth alpha beta ~prev_used_null =
-  (* Check for terminal conditions *)
-  if depth = 0 then quiescence pos alpha beta
-  else
-    (* Null move pruning *)
-    let in_check = is_king_attacked pos in
-    let null_move_result =
-      if not prev_used_null          (* Don't do double null *)
-         && not in_check              (* Can't null in check *)
-         && depth >= 3                (* Need sufficient depth *)
-         && has_non_pawn_material pos (* Avoid zugzwang *)
-         && score > beta              (* Position is promising *)
-      then begin
-        let null_pos = make_null_move pos in
-        let null_reduction = if depth >= 6 then 3 else 2 in
-        let null_depth = depth - 1 - null_reduction in
-
-        let null_score, _ =
-          alphabeta null_pos null_depth (-beta) (-beta + 1) ~prev_used_null:true in
-        let null_score = -null_score in
-
-        if null_score >= beta then
-          Some beta  (* Null move cutoff *)
-        else
-          None
-      end
-      else None
-    in
-
-    match null_move_result with
-    | Some score -> score, None
-    | None ->
-      (* Continue normal search *)
-      normal_search pos depth alpha beta ~prev_used_null:false
-```
-
-## Zugzwang Detection
-
-Positions where null move can fail:
-
-### King and Pawn Endgames
-
-```
-Example: Opposition
-White: Kd5, pawns on e5,f5
-Black: Kd7
-
-White to move: draw (must move king, loses opposition)
-Black to move: White wins (Black must give up opposition)
-
-Null move gives Black extra move -> fails to find White's win
-```
-
-### Detection heuristics:
-
-```ocaml
-let zugzwang_likely pos =
-  (* Only kings and pawns *)
-  let non_pawn_material side =
-    count_material pos side - (count_pawns pos side * 100) in
-
-  non_pawn_material White <= 300 && non_pawn_material Black <= 300
-```
-
-Or simpler:
-
-```ocaml
-let has_non_pawn_material pos =
-  let side = pos.side_to_move in
-  let knights = popcount (pieces pos side Knight) in
-  let bishops = popcount (pieces pos side Bishop) in
-  let rooks = popcount (pieces pos side Rook) in
-  let queens = popcount (pieces pos side Queen) in
-  knights + bishops + rooks + queens > 0
-```
-
-## Common Pitfalls
-
-### 1. Null Move in Check
-
-```ocaml
-(* Wrong: *)
-let null_pos = make_null_move pos in
-
-(* Correct: *)
-if not (is_in_check pos) then
-  let null_pos = make_null_move pos in
-```
-
-### 2. Double Null Move
-
-```ocaml
-(* Wrong: Can do null move again in child *)
-alphabeta null_pos depth' alpha beta
-
-(* Correct: Track null move usage *)
-alphabeta null_pos depth' alpha beta ~used_null:true
-```
-
-### 3. Not Clearing En Passant
-
-```ocaml
-(* Wrong: *)
-make_null_move pos  (* Keeps en_passant_square *)
-
-(* Correct: *)
-{ pos with en_passant_square = None }
-```
-
-### 4. Using with Low Depth
-
-```ocaml
-(* Wrong: *)
-if depth >= 1 then try_null_move ()
-
-(* Correct: Need at least depth 3 *)
-if depth >= 3 then try_null_move ()
-```
-
-## Measuring Effectiveness
-
-Track null move statistics:
-
-```ocaml
-type null_move_stats = {
-  attempts: int;        (* Times null move tried *)
-  cutoffs: int;         (* Times null move caused cutoff *)
-  nodes_saved: int64;   (* Estimated nodes saved *)
-}
-
-let cutoff_rate stats =
-  float stats.cutoffs /. float stats.attempts
-```
-
-Good null move pruning:
-
-- **Cutoff rate:** 60-80% of attempts
-- **Nodes saved:** 40-60% reduction in total nodes
-- **Speed improvement:** 2-3x faster search
-
-## Advanced: Mate Threat Extensions
-
-If null move search shows opponent has a mate threat, extend the search:
-
-```ocaml
-let null_score, _ = alphabeta null_pos null_depth (-beta) (-beta + 1) in
-let null_score = -null_score in
-
-if null_score >= beta then
-  Some beta  (* Normal null move cutoff *)
-else if null_score <= -mate_threshold then
-  (* Opponent has mate threat! Extend search *)
-  let extended_depth = depth + 1 in
-  normal_search pos extended_depth alpha beta
-else
-  None  (* Continue normal search *)
-```
-
-This catches positions where opponent has strong threats.
-
-## Null Move vs Other Techniques
-
-| Technique                                       | Elo Gain | Risk                | Complexity |
-| ----------------------------------------------- | -------- | ------------------- | ---------- |
-| Null Move                                       | +100-150 | Zugzwang errors     | Low        |
-| [Late Move Reductions](late-move-reductions.md) | +100-200 | Missed tactics      | Medium     |
-| Futility Pruning                                | +30-50   | Tactical oversights | Low        |
-
-Null move is high reward, low risk, easy to implement—one of the best Elo-per-line improvements!
-
-## Further Reading
-
-- [Late Move Reductions](late-move-reductions.md) - Another powerful pruning technique
-- [Alpha-Beta Pruning](alpha-beta-pruning.md) - Base search algorithm
-- [Chess Programming Wiki - Null Move Pruning](https://www.chessprogramming.org/Null_Move_Pruning)
-- [Zugzwang](https://www.chessprogramming.org/Zugzwang)
-- `lib/engine/search.ml` - See null move implementation
+- [Chess Programming Wiki: Null Move Pruning](https://www.chessprogramming.org/Null_Move_Pruning)
+- [Chess Programming Wiki: Zugzwang](https://www.chessprogramming.org/Zugzwang)
+- ChessML's code: `lib/engine/search.ml` (`search_node`), `lib/engine/position.ml` (`make_null_move`, `count_non_pawn_material`)

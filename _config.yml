@@ -1,8 +1,8 @@
 # Jekyll configuration for ChessML Documentation
 title: ChessML
-description: A bitboard-based chess engine in OCaml with comprehensive chess programming guides
+description: Notes I wrote while learning chess programming by building an engine in OCaml
 url: https://alexanderbrevig.github.io
-baseurl: /chessml
+baseurl: /ChessML
 
 # Theme
 theme: just-the-docs
@@ -123,3 +123,6 @@ exclude:
   - "*.pgn"
   - "*.txt"
   - CONTRIBUTING.md
+  - CLAUDE.md
+  - README.md
+  - book.bin

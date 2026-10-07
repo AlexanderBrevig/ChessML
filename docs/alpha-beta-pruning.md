@@ -3,268 +3,146 @@ layout: default
 title: Alpha-Beta Pruning
 parent: Chess Programming Guide
 nav_order: 4
-description: "The foundation of modern chess search algorithms"
+description: "My notes on alpha-beta, negamax and principal variation search"
 permalink: /docs/alpha-beta-pruning
 ---
 
 # Alpha-Beta Pruning
 
-## What Is Alpha-Beta Pruning?
+These are my notes on the search algorithm at the center of ChessML. They describe how I understand it and what ChessML does; for the real reference, see the [Chess Programming Wiki](https://www.chessprogramming.org/Alpha-Beta).
 
-Alpha-beta pruning is an optimization of the minimax algorithm that lets you skip searching parts of the game tree that provably can't affect the final decision. It's the foundation of every competitive chess engine.
+## The idea
 
-**Elo Impact:** ~1000+ Elo compared to basic minimax. It typically reduces the number of positions you need to evaluate by 50-90%, letting you search much deeper.
+Minimax looks at every move, every reply, every reply to that, down to a fixed depth, and assumes both sides pick their best option. Alpha-beta gets the same score while skipping branches that cannot change it.
 
-## Why It Matters
-
-Chess has an enormous branching factor (~35 legal moves per position on average). Without pruning:
-
-- Depth 1: ~35 positions
-- Depth 2: ~1,225 positions
-- Depth 3: ~42,875 positions
-- Depth 4: ~1.5 million positions
-
-With alpha-beta, you can effectively search 2x deeper in the same time, which is worth roughly 200 Elo per extra ply.
-
-## The Core Idea
-
-During search, you maintain two values:
-
-- **Alpha (α):** The best score the maximizing player (you) can guarantee so far
-- **Beta (β):** The best score the minimizing player (opponent) can guarantee so far
-
-**Key insight:** If you find a move where the opponent's best response is worse than what they can already achieve elsewhere in the tree, stop searching that branch—it will never be played.
-
-## How It Works
-
-### Simple Example
+The smallest example I could come up with. It is my move and I compare two candidates:
 
 ```
-Your turn, considering two moves:
-  Move A: Opponent can reply with -5 (bad for you)
-  Move B: You're evaluating opponent's responses...
-    - Response 1: -3
-    - Response 2: -1
-    - Response 3: ... (we can stop here!)
+Move A: after the opponent's best reply I am at +2.
+Move B: the first reply I look at already leaves me at -1.
 ```
 
-Why stop at Response 3? You've already seen that Move A gives -5. In Move B, the opponent already has a response giving them -1 (better for them than -5). Even if Response 3 is terrible for the opponent (say, -10), they'll just play Response 2 instead. So you don't need to evaluate Response 3—Move B is already worse than Move A.
+I do not need the other replies to B. The opponent can always choose that -1 reply (or something even better for them), so B is worth at most -1 to me, and A already guarantees +2. B is worse than A whatever the other replies are, so I stop looking at B. That stop is a cutoff.
 
-### The Algorithm
+The search carries two numbers down the tree to make this work:
+
+- **alpha**: the score I am already sure of somewhere else (here +2, from A).
+- **beta**: the score the opponent is already sure of; if I find something at or above it, they will avoid this line, and I can stop.
+
+Anything between them is the window of scores that still matters.
+
+## Negamax
+
+Instead of writing a "max" side and a "min" side, nearly every engine (ChessML too) uses negamax: a score is always from the point of view of the side to move, and a child's score is negated on the way up. For this to work, the evaluation must also score from the side to move's perspective. ChessML's `Eval.evaluate` does.
+
+A simplified sketch (not ChessML's code; `evaluate`, `legal_moves`, `make_move` and `in_check` stand for the obvious functions):
 
 ```ocaml
-let rec alphabeta pos depth alpha beta maximizing_player =
-  if depth = 0 then
-    evaluate pos
-  else if maximizing_player then
-    (* We're trying to maximize score *)
-    let rec search_moves moves alpha best_move =
-      match moves with
-      | [] -> alpha, best_move
-      | mv :: rest ->
-        let new_pos = make_move pos mv in
-        let score, _ = alphabeta new_pos (depth - 1) alpha beta false in
-        if score >= beta then
-          (* Beta cutoff: opponent won't let us reach this position *)
-          score, Some mv
-        else
-          let new_alpha = max alpha score in
-          let new_best = if score > alpha then Some mv else best_move in
-          search_moves rest new_alpha new_best
+let rec negamax pos ~depth ~ply ~alpha ~beta =
+  if depth = 0
+  then evaluate pos
+  else (
+    match legal_moves pos with
+    | [] -> if in_check pos then Score.mated_in ply else Score.draw
+    | moves ->
+      let rec loop best alpha = function
+        | [] -> best
+        | mv :: rest ->
+          let score =
+            -negamax (make_move pos mv) ~depth:(depth - 1) ~ply:(ply + 1)
+               ~alpha:(-beta) ~beta:(-alpha)
+          in
+          if score >= beta
+          then score (* cutoff: the opponent will not allow this position *)
+          else loop (max best score) (max alpha score) rest
+      in
+      loop (-Score.infinity) alpha moves)
+```
+
+Two details I got wrong at first:
+
+- **No legal moves is not "return alpha".** It is checkmate if the side to move is in check, otherwise stalemate, which is a draw.
+- **Fail-soft vs fail-hard.** This sketch returns the best score it saw, even when that is outside the window ("fail-soft"). A fail-hard version clamps the result to alpha or beta. Both give the same move at the root; fail-soft gives the caller (and the transposition table) a slightly tighter bound. ChessML is fail-soft.
+
+Plain alpha-beta returns the same score as minimax at the same depth. It does not always return the same move, since two moves with equal scores can come out in a different order. Once a transposition table and pruning are added, even the score can differ.
+
+## Why move order matters
+
+How much alpha-beta saves depends entirely on the order moves are tried. If the best move always comes first, the search visits roughly 2·b^(d/2) leaf positions instead of b^d (b = moves per position, d = depth), which is like searching twice as deep for the same work. With bad order it saves much less. So most of what an engine does around the search is about trying good moves early; see [Move Ordering]({% link docs/move-ordering.md %}).
+
+ChessML's order, from `Search_common.Ordering.score_move` (higher first):
+
+| Score | Moves |
+| --- | --- |
+| 20000 | the move stored in the [transposition table]({% link docs/transposition-tables.md %}) |
+| 15000 | castling |
+| 10000 | moves that give check |
+| 9000+ | promotions (queen highest) |
+| 8000 + SEE | captures that win material by [SEE]({% link docs/static-exchange-evaluation.md %}) |
+| 7000 | captures that trade evenly |
+| 5000 | killer moves |
+| 4000 | the countermove to the opponent's last move |
+| history / 10 | other quiet moves, by history score |
+| negative | captures that lose material |
+
+## Principal variation search
+
+With good ordering the first move is usually the best one. Principal variation search (PVS) uses that: it searches the first move with the full window, and every later move with a "null window" (alpha, alpha + 1), which only answers "is this better than alpha, yes or no?". Null-window searches cut off much more. If one does come back above alpha, the guess was wrong and that move is searched again with the full window.
+
+This is ChessML's version, shortened from `search_moves` in `lib/engine/search.ml` (the reduction is [late move reductions]({% link docs/late-move-reductions.md %})):
+
+```ocaml
+let score =
+  if move_count = 1
+  then search child ~alpha ~beta ~depth:(depth - 1) mv
+  else (
+    let reduced_depth = max 0 (depth - 1 - reduction) in
+    (* Null window search, possibly reduced *)
+    let s = search child ~alpha ~beta:(alpha + 1) ~depth:reduced_depth mv in
+    let s =
+      if s > alpha && reduction > 0
+      then search child ~alpha ~beta:(alpha + 1) ~depth:(depth - 1) mv
+      else s
     in
-    search_moves (generate_moves pos) alpha None
-  else
-    (* Opponent trying to minimize score *)
-    let rec search_moves moves beta best_move =
-      match moves with
-      | [] -> beta, best_move
-      | mv :: rest ->
-        let new_pos = make_move pos mv in
-        let score, _ = alphabeta new_pos (depth - 1) alpha beta true in
-        if score <= alpha then
-          (* Alpha cutoff: we won't let opponent reach this position *)
-          score, Some mv
-        else
-          let new_beta = min beta score in
-          let new_best = if score < beta then Some mv else best_move in
-          search_moves rest new_beta new_best
-    in
-    search_moves (generate_moves pos) beta None
+    (* Full window re-search at PV nodes *)
+    if s > alpha && s < beta && pv_node
+    then search child ~alpha ~beta ~depth:(depth - 1) mv
+    else s)
 ```
 
-## Types of Cutoffs
+A node is a "PV node" when its window is wider than one (`beta - alpha > 1`). Only those can produce an exact score, and ChessML does its selective pruning only at the other nodes.
 
-### Beta Cutoff (Fail-High)
+## What else ChessML's search does
 
-Occurs when the maximizing player finds a move too good for the position—the opponent won't allow the position to be reached.
+- **Mate scores with distance.** Mate is `Score.mate` (31000) minus the ply, built with `Score.mated_in ply`, so a mate in 2 scores higher than a mate in 5. `Score.infinity` (32000) is the starting window, and `Score.is_mate` tests against `Score.mate_bound` (`mate - max_ply`). The code never writes mate values by hand.
+- **Mate distance pruning.** At ply `p` the best possible result is mating on the next move and the worst is being mated right now, so the window is clamped to those two scores. If a shorter mate is already known elsewhere, the clamped window is empty and the node returns at once:
 
-```
-Alpha = 10, Beta = 20
-You find a move scoring 25 → Beta cutoff!
-Opponent has better options earlier in the tree (scoring < 20)
-```
+  ```ocaml
+  let alpha = max alpha (Score.mated_in ply) in
+  let beta = min beta (Score.mate - ply - 1) in
+  if alpha >= beta then alpha else ...
+  ```
 
-### Alpha Cutoff (Fail-Low)
+- **Check extension.** When the side to move is in check, the node gets one extra ply (`if in_check then depth + 1`).
+- **Draws inside the tree.** `is_draw` returns a draw for the fifty-move rule, insufficient material, and a repetition of any earlier position, both from the game so far and from the current search path. Without this ChessML shuffled won endings into threefold repetition.
+- **Iterative deepening.** `find_best_move` searches depth 1, then 2, then 3, and so on. Each iteration fills the transposition table and the ordering tables, which makes the next one cheaper. It stops at the depth limit, when a mate is found within the searched depth, or when half the time is used (no new iteration is started).
+- **Time checks inside the search.** Once the first iteration has finished, every 2048 nodes `poll` checks the clock and the `stop` flag, and raises an exception that abandons the iteration in progress. The result of the last completed iteration is used.
+- **Quiescence at the leaves.** At depth 0 it does not call the evaluation directly but runs a [quiescence search]({% link docs/quiescence-search.md %}).
 
-Occurs when the minimizing player finds a move too good for them—you won't allow that position.
+There is also [null move pruning]({% link docs/null-move-pruning.md %}) and a few cheaper pruning tricks (reverse futility, razoring, futility, late move pruning) whose margins live in [`search_common.ml`](https://github.com/AlexanderBrevig/ChessML/blob/main/lib/engine/search_common.ml). ChessML does not use aspiration windows: every iteration starts with the full window.
 
-```
-Alpha = 10, Beta = 20
-Opponent finds a response scoring 5 → Alpha cutoff!
-You have better options earlier (scoring > 10)
-```
+## Pitfalls
 
-## Negamax Formulation
+- **Negamax with a White-perspective eval.** If the evaluation returns "good for White" instead of "good for the side to move", Black plays the worst moves it can find.
+- **Flat mate scores.** If every mate scores the same, the engine has no reason to prefer the short mate and can keep postponing it. ChessML had this bug. Subtract the ply, and adjust mate scores when storing them in the transposition table.
+- **Treating "no moves" as a normal leaf.** Without the checkmate/stalemate test the engine does not know it is mated, or happily walks into stalemate.
+- **Repetitions not detected in the search.** The engine cannot see that a line repeats, so it misses draws it could save and repeats its way out of won positions.
+- **Time only checked between iterations.** One deep iteration can take several times longer than the previous one; ChessML overran its time by about 2x before it polled inside the search.
 
-Most engines use "negamax" - a simplified version where you always maximize from the current player's perspective:
+## Sources
 
-```ocaml
-let rec alphabeta pos depth alpha beta =
-  if depth = 0 then
-    evaluate pos
-  else
-    let rec search_moves moves alpha best_move =
-      match moves with
-      | [] -> alpha, best_move
-      | mv :: rest ->
-        let new_pos = make_move pos mv in
-        (* Note the negation and swapped alpha/beta *)
-        let score, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-        let score = -score in
-        if score >= beta then
-          score, Some mv  (* Beta cutoff *)
-        else
-          let new_alpha = max alpha score in
-          let new_best = if score > alpha then Some mv else best_move in
-          search_moves rest new_alpha new_best
-    in
-    search_moves (generate_moves pos) alpha None
-```
-
-This works because what's good for you (positive score) is bad for your opponent (negative score).
-
-## Move Ordering: The Secret Sauce
-
-{: .highlight }
-
-> **Performance Tip:** Good move ordering can effectively double your search depth!
-
-Alpha-beta's effectiveness depends heavily on **[move ordering](move-ordering.md)**. The algorithm works best when you search the best moves first.
-
-**Perfect ordering:** Only ~2√N positions searched (vs N for minimax)
-**Random ordering:** ~3N/4 positions searched
-
-### Basic ordering strategy:
-
-1. **[Hash move](transposition-tables.md)** (from transposition table)
-2. **Winning captures** (pawn takes queen)
-3. **Equal captures** (bishop takes bishop)
-4. **[Killer moves](move-ordering.md#killer-move-heuristic)** (quiet moves that caused cutoffs recently)
-5. **[History heuristic](move-ordering.md#history-heuristic)** (moves that historically caused cutoffs)
-6. **Losing captures** (queen takes pawn defended by pawn)
-7. **Remaining quiet moves**
-
-Good move ordering can effectively double your search depth!
-
-## Principal Variation Search (PVS)
-
-An enhancement where you assume the first move is best:
-
-```ocaml
-(* Search first move with full window *)
-let score1, _ = alphabeta pos1 (depth - 1) (-beta) (-alpha) in
-let score1 = -score1 in
-
-(* Search remaining moves with zero window *)
-let score2, _ = alphabeta pos2 (depth - 1) (-alpha - 1) (-alpha) in
-let score2 = -score2 in
-
-if alpha < score2 && score2 < beta then
-  (* Re-search with full window if assumption was wrong *)
-  let score2, _ = alphabeta pos2 (depth - 1) (-beta) (-score2) in
-  ...
-```
-
-This saves time because zero-window searches are very fast and often confirm your assumption. Often combined with [Late Move Reductions](late-move-reductions.md) for maximum efficiency.
-
-## Common Pitfalls
-
-{: .warning }
-
-> **Common Pitfall:** Forgetting to use `max` when updating alpha loses information!
-
-### 1. Incorrect Window Updates
-
-```ocaml
-(* Wrong: *)
-let alpha = score  (* Loses information *)
-
-(* Correct: *)
-let alpha = max alpha score  (* Keep best lower bound *)
-```
-
-### 2. Forgetting to Negate
-
-```ocaml
-(* Wrong in negamax: *)
-let score, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-
-(* Correct: *)
-let score, _ = alphabeta new_pos (depth - 1) (-beta) (-alpha) in
-let score = -score in
-```
-
-### 3. Not Checking for Cutoffs
-
-Every move must check if `score >= beta` for maximizer or `score <= alpha` for minimizer.
-
-## Implementation Tips
-
-### 1. Start Simple
-
-Begin with basic alphabeta before adding PVS or aspiration windows.
-
-### 2. Track Nodes
-
-Count positions evaluated to measure pruning effectiveness:
-
-```ocaml
-let nodes = ref 0L in
-(* ... *)
-nodes := Int64.add !nodes 1L
-```
-
-### 3. Use Mate Scores Carefully
-
-```ocaml
-let mate_score = 100000 in
-let is_mate score = abs score > 90000 in
-
-(* Be careful with overflow when negating! *)
-if score > 50000 then -50000 else -score
-```
-
-### 4. Depth Reduction Checks
-
-Always verify `depth > 0` before recursing to prevent infinite loops.
-
-## Measuring Success
-
-A well-implemented alpha-beta should:
-
-- Achieve **50-90% pruning** at depth 4+
-- Show **exponentially decreasing** node counts with better move ordering
-- Produce **identical results** to minimax (verify with shallow searches)
-
-Example node counts (same position):
-
-- Minimax depth 5: ~5 million nodes
-- Basic alpha-beta: ~500k nodes (90% reduction)
-- Alpha-beta + good ordering: ~50k nodes (99% reduction)
-
-## Further Reading
-
-- [Move Ordering](move-ordering.md) - Critical for alpha-beta efficiency
-- [Transposition Tables](transposition-tables.md) - Cache results for identical positions
-- [Quiescence Search](quiescence-search.md) - Extend search for tactical stability
-- [Chess Programming Wiki - Alpha-Beta](https://www.chessprogramming.org/Alpha-Beta)
+- [Chess Programming Wiki: Alpha-Beta](https://www.chessprogramming.org/Alpha-Beta)
+- [Chess Programming Wiki: Principal Variation Search](https://www.chessprogramming.org/Principal_Variation_Search)
+- [Chess Programming Wiki: Mate Distance Pruning](https://www.chessprogramming.org/Mate_Distance_Pruning)
+- Donald Knuth and Ronald Moore, "An Analysis of Alpha-Beta Pruning" (1975), for the size of the minimal tree
+- ChessML's code: `lib/engine/search.ml`, `lib/engine/search_common.ml`, `lib/engine/score.ml`

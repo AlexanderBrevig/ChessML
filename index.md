@@ -2,76 +2,46 @@
 layout: home
 title: Home
 nav_order: 1
-description: "ChessML - A comprehensive guide to chess programming concepts and techniques implemented in OCaml"
+description: "Notes I wrote while learning chess programming by building ChessML in OCaml"
 permalink: /
 ---
 
-# ChessML Documentation
+# ChessML notes
 
-Welcome to the ChessML documentation! This comprehensive guide covers chess programming concepts, from fundamental board representation to advanced search techniques.
+ChessML is a chess engine I am writing in OCaml for fun and to learn. These pages are my notes on the techniques it uses: what I understood about each one, how ChessML does it (including the parts it does crudely or not at all), and the mistakes worth warning others about.
 
-## About ChessML
+They are not a reference. I am a novice at this, and where I explain something you should trust the [Chess Programming Wiki](https://www.chessprogramming.org/) and the engines it links to over me. Each page lists the sources it leans on.
 
-ChessML is a chess engine written in OCaml that demonstrates modern chess programming techniques. Whether you're new to chess programming or looking to understand specific optimizations, these guides will help you build a strong chess engine.
+## The pages
 
-## Learning Path
+Representing the board:
 
-### 🎯 Beginner - Build a Basic Engine
+- [Bitboards]({% link docs/bitboards.md %}): the board as 64-bit integers
+- [Magic bitboards]({% link docs/magic-bitboards.md %}): attacks of sliding pieces by table lookup
+- [Zobrist hashing]({% link docs/zobrist-hashing.md %}): a 64-bit key for every position
 
-Start with the fundamentals:
+Searching:
 
-1. [Bitboards](docs/bitboards) - Represent the board efficiently
-2. [Alpha-Beta Pruning](docs/alpha-beta-pruning) - Basic search algorithm
-3. [Evaluation Function](docs/evaluation-function) - Material + piece-square tables
+- [Alpha-beta pruning]({% link docs/alpha-beta-pruning.md %}): the core search
+- [Transposition tables]({% link docs/transposition-tables.md %}): remembering positions already searched
+- [Quiescence search]({% link docs/quiescence-search.md %}): not stopping in the middle of a capture sequence
+- [Null move pruning]({% link docs/null-move-pruning.md %}): passing to prove a position is good enough
+- [Late move reductions]({% link docs/late-move-reductions.md %}): searching unlikely moves less deeply
+- [Move ordering]({% link docs/move-ordering.md %}): why the order of moves matters so much
 
-**Result:** ~1500-1800 Elo engine
+Judging positions:
 
-### 🚀 Intermediate - Add Intelligence
+- [Static exchange evaluation]({% link docs/static-exchange-evaluation.md %}): is this capture safe?
+- [Evaluation function]({% link docs/evaluation-function.md %}): turning a position into a number
+- [Opening books]({% link docs/opening-books.md %}): playing the first moves from a book
 
-Improve your engine's strength:
+The [overview page]({% link docs/chess-programming-guide.md %}) has a few lines on each, and the [developer guide]({% link docs/README.md %}) describes how the code is organized.
 
-4. [Zobrist Hashing](docs/zobrist-hashing) - Position keys for caching
-5. [Transposition Tables](docs/transposition-tables) - Cache search results
-6. [Move Ordering](docs/move-ordering) - Try best moves first 7. [Quiescence Search](docs/quiescence-search) - Tactical stability
+## How strong is it?
 
-**Result:** ~2000-2200 Elo engine
+Not very, by engine standards: roughly 1850–2000 on Stockfish's limited-strength scale, measured with a few hundred fast games, so take it as a ballpark. The [README](https://github.com/AlexanderBrevig/ChessML#strength) explains how I measured it.
 
-### ⚡ Advanced - Optimize Performance
+## Links
 
-Make your engine competitive:
-
-8. [Magic Bitboards](docs/magic-bitboards) - Fast attack generation
-9. [Null Move Pruning](docs/null-move-pruning) - Aggressive search reduction
-10. [Late Move Reductions](docs/late-move-reductions) - Search deeper efficiently
-11. [Static Exchange Evaluation](docs/static-exchange-evaluation) - Better capture evaluation
-12. [Opening Books](docs/opening-books) - Opening knowledge
-
-**Result:** ~2400+ Elo engine
-
-## Quick Links
-
-- [Chess Programming Concepts Guide](docs/chess-programming-guide) - Complete overview
-- [GitHub Repository](https://github.com/AlexanderBrevig/ChessML) - Source code
-- [Contributing Guide](https://github.com/AlexanderBrevig/ChessML/blob/main/CONTRIBUTING.md) - How to contribute
-
-## Documentation Structure
-
-Our documentation is organized into clear categories:
-
-- **Core Concepts** - Fundamental board representation and data structures
-- **Search Techniques** - Algorithms for finding the best move
-- **Move Ordering** - Optimizing search efficiency
-- **Evaluation** - Judging chess positions
-
-Each guide includes:
-
-- Clear explanations of concepts
-- Implementation examples in OCaml
-- Elo impact estimates
-- Common pitfalls and solutions
-
----
-
-_Ready to build a chess engine? Start with the [Chess Programming Guide](docs/chess-programming-guide)!_
-
-**Happy Chess Programming! ♟️**
+- [Source code](https://github.com/AlexanderBrevig/ChessML)
+- [Contributing](https://github.com/AlexanderBrevig/ChessML/blob/main/CONTRIBUTING.md)
