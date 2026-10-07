@@ -1,7 +1,7 @@
 (library
  (name chessml)
  (public_name chessml)
- (flags
-  (:standard -w -32-69))
+ (instrumentation
+  (backend bisect_ppx))
  (libraries chessml.core chessml.engine chessml.protocols)
  (modules chessml))

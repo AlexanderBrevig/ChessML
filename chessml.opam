@@ -12,8 +12,9 @@ bug-reports: "https://github.com/alexanderbrevig/chessml/issues"
 depends: [
   "ocaml" {>= "5.3"}
   "dune" {>= "3.11"}
-  "ocaml-lsp-server" {>= "1.23.1"}
+  "domainslib"
   "alcotest" {with-test}
+  "bisect_ppx" {with-test & >= "2.5.0"}
   "odoc" {with-doc}
 ]
 build: [

@@ -92,7 +92,7 @@
 ;; Regression Tests
 ;; ============================================================================
 
-(executable
+(test
  (name test_illegal_move_regression)
  (libraries chessml))
 

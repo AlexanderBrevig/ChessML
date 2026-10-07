@@ -1,8 +1,8 @@
 (library
  (name chessml_engine)
  (public_name chessml.engine)
- (flags
-  (:standard -w -32-69))
+ (instrumentation
+  (backend bisect_ppx))
  (libraries chessml.core unix threads.posix)
  (modules
   config
