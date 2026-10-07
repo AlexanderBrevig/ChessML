@@ -41,8 +41,14 @@ let test_engine_chooses_promotion () =
     (List.exists (fun mv -> Move.promotion mv = Some Queen) result.pv)
 ;;
 
-(** Test passed pawn evaluation bonuses increase with rank *)
+(** Test passed pawn evaluation bonuses increase with rank. These are K+P vs K
+    positions, which the full evaluation scores exactly (several are draws), so
+    test the pawn structure term itself. *)
 let test_passed_pawn_bonus_progression () =
+  let module Eval = struct
+    let evaluate = Chessml.Engine.Eval_pawn_structure.evaluate_pawn_structure
+  end
+  in
   (* Pawn on 4th rank *)
   let pos_4th = Position.of_fen "4k3/8/8/8/4P3/8/8/4K3 w - - 0 1" in
   let eval_4th = Eval.evaluate pos_4th in

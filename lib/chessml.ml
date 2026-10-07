@@ -31,6 +31,7 @@ module Game = Engine.Game
 module Perft = Engine.Perft
 module Eval = Engine.Eval
 module Endgame = Engine.Endgame
+module Kpk = Engine.Kpk
 module Search = Engine.Search
 module Config = Engine.Config
 module Killers = Engine.Killers

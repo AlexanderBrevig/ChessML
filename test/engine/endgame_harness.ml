@@ -16,7 +16,10 @@ let random_position rng white_pieces =
     let squares = Array.make 64 '.' in
     let place c =
       let rec go () =
-        let sq = Random.State.int rng 64 in
+        (* pawns only on ranks 2-7 *)
+        let sq =
+          if c = 'P' then 8 + Random.State.int rng 48 else Random.State.int rng 64
+        in
         if squares.(sq) = '.' then squares.(sq) <- c else go ()
       in
       go ()
@@ -105,4 +108,23 @@ let run ?depth ?max_plies ~seed ~n white_pieces =
     else
       float_of_int (List.fold_left ( + ) 0 mate_plies)
       /. float_of_int (List.length mate_plies) )
+;;
+
+(** Like [run] for K+P vs K, but only positions the KPK table says White wins *)
+let run_kpk_wins ?depth ?max_plies ~seed ~n () =
+  let rng = Random.State.make [| seed |] in
+  let rec winning () =
+    let fen = random_position rng [ 'P' ] in
+    let pos = Position.of_fen fen in
+    let pawn = Option.get (Bitboard.lsb (Position.get_pieces pos White Pawn)) in
+    if
+      Kpk.wins
+        ~strong_king:(Position.white_king_sq pos)
+        ~weak_king:(Position.black_king_sq pos)
+        ~pawn
+        ~strong_to_move:(Position.side_to_move pos = White)
+    then fen
+    else winning ()
+  in
+  List.init n (fun _ -> play ?depth ?max_plies (winning ()))
 ;;

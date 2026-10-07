@@ -73,7 +73,9 @@ let test_rook_vs_bishop () =
 
 (* Test king and pawns endgame *)
 let test_kp_vs_k_endgame () =
-  let fen = "8/8/8/8/8/4k3/4P3/4K3 w - - 0 1" in
+  (* White to move takes the opposition and wins (verified with Syzygy). The old
+     position here had the black king in front of the pawn, which is a draw. *)
+  let fen = "8/8/4k3/8/8/4K3/4P3/8 w - - 0 1" in
   let pos = Position.of_fen fen in
   let eval = Eval.evaluate pos in
   Alcotest.(check bool) "KP vs K is winning" true (eval > 50)

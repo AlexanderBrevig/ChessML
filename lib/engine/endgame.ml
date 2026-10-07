@@ -7,6 +7,8 @@
 
     - Lone king against a queen or rook (plus anything): drive the king to the
       edge and bring the attacking king close.
+    - King and pawn against king: exact result from the {!Kpk} table; a won
+      position also rewards pushing the pawn.
 *)
 
 open Chessml_core
@@ -50,6 +52,22 @@ let kxk pos ~strong =
   + push_close (king_square pos strong) weak_king
 ;;
 
+(** King and pawn against king: score for [strong] *)
+let kpk pos ~strong =
+  let weak = Color.opponent strong in
+  (* the table wants the pawn moving up the board *)
+  let orient sq = if strong = White then sq else sq lxor 56 in
+  let pawn = orient (Bitboard.lsb (Position.get_pieces pos strong Pawn) |> Option.get) in
+  if
+    Kpk.wins
+      ~strong_king:(orient (king_square pos strong))
+      ~weak_king:(orient (king_square pos weak))
+      ~pawn
+      ~strong_to_move:(Position.side_to_move pos = strong)
+  then known_win + Types.PieceKind.value Pawn + (10 * (pawn / 8))
+  else Score.draw
+;;
+
 (** Which side, if any, has only its king left *)
 let bare_king pos =
   if non_king_pieces pos Black = 0L
@@ -70,6 +88,10 @@ let evaluate pos =
     let strong = Color.opponent weak in
     if count pos strong Queen + count pos strong Rook > 0
     then Some (from_side_to_move strong (kxk pos ~strong))
+    else if
+      non_king_pieces pos strong = Position.get_pieces pos strong Pawn
+      && count pos strong Pawn = 1
+    then Some (from_side_to_move strong (kpk pos ~strong))
     else None
   | None -> None
 ;;

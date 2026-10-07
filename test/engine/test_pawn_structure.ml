@@ -1,6 +1,22 @@
-(** Pawn structure evaluation tests *)
+(** Pawn structure evaluation tests
+
+    The positions are pawn-only diagrams (no kings), so they are scored with the
+    pawn structure evaluation plus material rather than the full evaluation (which
+    would treat a lone pawn as a K+P vs K endgame). *)
 
 open Chessml
+
+module Eval = struct
+  (** Material plus pawn structure, from the side to move's perspective *)
+  let evaluate pos =
+    let white_minus_black =
+      Position.material pos White
+      - Position.material pos Black
+      + Chessml.Engine.Eval_pawn_structure.evaluate_pawn_structure pos
+    in
+    if Position.side_to_move pos = White then white_minus_black else -white_minus_black
+  ;;
+end
 
 let test_passed_pawn_white () =
   (* White has a passed pawn on e5, no black pawns can stop it *)
