@@ -2,28 +2,24 @@
 
 open Chessml
 
-(* Test that count_repetitions correctly identifies repeated positions *)
-let test_count_repetitions () =
-  let key1 = 0x1234567890ABCDEFL in
-  let key2 = 0xFEDCBA0987654321L in
-  let key3 = 0xAAAABBBBCCCCDDDDL in
-  (* No repetitions in empty history *)
-  let count = Eval.count_repetitions key1 [] in
-  Alcotest.(check int) "Empty history has no repetitions" 0 count;
-  (* No repetitions when key doesn't match *)
-  let history = [ key2; key3; key2; key3 ] in
-  let count = Eval.count_repetitions key1 history in
-  Alcotest.(check int) "Key not in history" 0 count;
-  (* One repetition - key appears once in history (skipping first entry) *)
-  (* History structure: [current, opponent_pos, key1_to_match] *)
-  let history = [ key2; key1; key3 ] in
-  let count = Eval.count_repetitions key1 history in
-  Alcotest.(check int) "One repetition (at position 2)" 1 count;
-  (* Two repetitions - key appears twice at positions with same side to move *)
-  (* History: [current, opp1, key1_match1, opp2, key1_match2, ...] *)
-  let history = [ key2; key1; key3; key1; key2 ] in
-  let count = Eval.count_repetitions key1 history in
-  Alcotest.(check int) "Two repetitions" 2 count
+(* Self-play a won K+Q vs K: the winning side must not repeat positions. (Mating
+   needs king-driving endgame knowledge the evaluation does not have yet.) *)
+let test_no_repetition_when_winning () =
+  let rec play game plies =
+    if plies > 60
+    then ()
+    else if Game.is_threefold_repetition game
+    then Alcotest.failf "threefold repetition at %s" (Game.to_fen game)
+    else (
+      match (Search.find_best_move ~verbose:false game 4).best_move with
+      | None ->
+        Alcotest.(check bool)
+          "mated, not stalemated"
+          true
+          (Movegen.in_check (Game.position game))
+      | Some mv -> play (Game.make_move game mv) (plies + 1))
+  in
+  play (Game.of_fen "8/8/8/4k3/8/8/8/3QK3 b - - 0 1") 0
 ;;
 
 (* Test repetition avoidance when winning *)
@@ -83,24 +79,6 @@ let test_seeks_repetition_when_losing () =
 
 (* Positive for white *)
 
-(* Test that material difference affects repetition incentive *)
-let test_material_affects_repetition_incentive () =
-  let pos = Position.default () in
-  let history = [ 0x1234L; 0x5678L ] in
-  (* In starting position, there should be no strong repetition incentive *)
-  let eval_no_rep = Eval.evaluate pos in
-  let eval_with_rep = Eval.evaluate ~history pos in
-  (* Both should evaluate starting position as approximately equal *)
-  Alcotest.(check bool)
-    "Starting position evaluates near zero without history"
-    true
-    (abs eval_no_rep < 100);
-  Alcotest.(check bool)
-    "Starting position evaluates near zero with history"
-    true
-    (abs eval_with_rep < 100)
-;;
-
 (* Test that Game.history is properly maintained *)
 let test_game_history_tracking () =
   let game = Game.default () in
@@ -149,8 +127,8 @@ let () =
   let open Alcotest in
   run
     "Repetition"
-    [ ( "count_repetitions"
-      , [ test_case "Counts position repetitions correctly" `Quick test_count_repetitions
+    [ ( "self_play"
+      , [ test_case "No repetition in won K+Q vs K" `Quick test_no_repetition_when_winning
         ] )
     ; ( "avoidance_when_winning"
       , [ test_case
@@ -163,12 +141,6 @@ let () =
             "Engine considers repetition when losing"
             `Slow
             test_seeks_repetition_when_losing
-        ] )
-    ; ( "material_affects_incentive"
-      , [ test_case
-            "Material difference affects repetition incentive"
-            `Quick
-            test_material_affects_repetition_incentive
         ] )
     ; ( "history_tracking"
       , [ test_case

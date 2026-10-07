@@ -3,79 +3,18 @@
     This module handles evaluation of endgame positions including:
     - Rook endgames (king cutoff, rook behind passed pawn)
     - Ladder mate technique (two major pieces coordinating)
-    - Repetition incentives (based on material situation)
     - Fifty-move rule incentives (avoid/seek draws appropriately)
 *)
 
 open Chessml_core
 open Types
 
-(** Check if position is approaching repetition by looking at history 
-    Returns: 0 = no repetition, 1 = position seen once, 2+ = multiple repetitions *)
-let count_repetitions (pos_key : int64) (history : int64 list) : int =
-  let rec count key hist skip_next =
-    match hist with
-    | [] -> 0
-    | h :: rest ->
-      if skip_next
-      then count key rest false (* Skip every other position - different side to move *)
-      else if h = key
-      then 1 + count key rest true
-      else count key rest true
-  in
-  count pos_key history true
-;;
-
-(** Evaluate repetition bonus/penalty based on material situation 
-    Returns adjustment in centipawns *)
-let evaluate_repetition_incentive
-      (pos : Position.t)
-      (history : int64 list)
-      (material_diff : int)
-  : int
-  =
-  let pos_key = Position.key pos in
-  let repetition_count = count_repetitions pos_key history in
-  if repetition_count = 0
-  then 0
-  else (
-    (* Position has occurred before - apply incentive based on material situation *)
-    let base_penalty = 150 in
-    (* Larger penalty/bonus for repetitions *)
-    let scaling_factor = if repetition_count >= 2 then 2 else 1 in
-    (* Stronger for 2nd repetition *)
-    if material_diff > 200
-    then
-      (* We're winning - strongly avoid repetition *)
-      -(base_penalty * scaling_factor)
-    else if material_diff < -200
-    then
-      (* We're losing - seek repetition for a draw *)
-      base_penalty * scaling_factor
-    else if material_diff > 50
-    then
-      (* Slightly ahead - discourage repetition *)
-      -(base_penalty / 2 * scaling_factor)
-    else if material_diff < -50
-    then
-      (* Slightly behind - encourage repetition *)
-      base_penalty / 2 * scaling_factor
-    else
-      (* Equal position - small penalty to avoid repetition *)
-      -(base_penalty / 4 * scaling_factor))
-;;
-
 (** Evaluate rook endgames with passed pawns - king cutoff is critical!
     In rook+pawn vs rook or rook+pawn vs king endgames, the key is:
     1. Use rook to cut off enemy king from the pawn
     2. Keep rook behind passed pawn (or on the same file)
     3. Advanced passed pawns with rook support should be heavily rewarded *)
-let evaluate_rook_endgame
-      (pos : Position.t)
-      (color : color)
-      (is_passed_pawn : Position.t -> int -> color -> bool)
-  : int
-  =
+let evaluate_rook_endgame (pos : Position.t) (color : color) : int =
   let opponent = Color.opponent color in
   (* Count pieces to determine if this is a rook endgame *)
   let our_rooks = Bitboard.population (Position.get_pieces pos color Rook) in
@@ -113,7 +52,7 @@ let evaluate_rook_endgame
     let our_rook_squares = Bitboard.to_list our_rook_bb in
     List.iter
       (fun pawn_sq ->
-         if is_passed_pawn pos pawn_sq color
+         if Eval_pawn_structure.is_passed_pawn pos pawn_sq color
          then (
            let pawn_file = Square.file pawn_sq |> File.to_int in
            let pawn_rank = Square.rank pawn_sq |> Rank.to_int in
@@ -169,12 +108,7 @@ let evaluate_rook_endgame
     2. Queen + rook coordinated similarly
     3. Enemy king distance from center (being pushed to edge)
     4. Our pieces maintaining safe distance from enemy king *)
-let evaluate_ladder_mate
-      (pos : Position.t)
-      (color : color)
-      (piece_kind_value : piece_kind -> int)
-  : int
-  =
+let evaluate_ladder_mate (pos : Position.t) (color : color) : int =
   let opponent = Color.opponent color in
   (* Count major pieces *)
   let our_rooks = Position.get_pieces pos color Rook in
@@ -187,17 +121,9 @@ let evaluate_ladder_mate
   then 0
   else (
     (* Check if opponent has few/no pieces (mating scenario) *)
-    let their_material = ref 0 in
-    let their_pieces = Position.get_color_pieces pos opponent in
-    Bitboard.iter
-      (fun sq ->
-         match Position.piece_at pos sq with
-         | Some piece when piece.color = opponent && piece.kind <> King ->
-           their_material := !their_material + piece_kind_value piece.kind
-         | _ -> ())
-      their_pieces;
+    let their_material = Position.material pos opponent in
     (* Only apply ladder mate bonus if opponent is weak (< 500cp material, basically lone king or king+minor) *)
-    if !their_material > 500
+    if their_material > 500
     then 0
     else (
       let bonus = ref 0 in
@@ -244,81 +170,61 @@ let evaluate_ladder_mate
       Bitboard.iter
         (fun sq -> major_piece_sqs := sq :: !major_piece_sqs)
         combined_major_pieces;
-      (* Check for coordinated pieces on DIFFERENT ranks AND different files *)
+      (* Formation bonus for a pair of major pieces: they must be adjacent on a
+         rank or file but not share one, so the king cannot slip between them *)
+      let pair_bonus sq1 sq2 =
+        let file1 = Square.file sq1 |> File.to_int in
+        let rank1 = Square.rank sq1 |> Rank.to_int in
+        let file2 = Square.file sq2 |> File.to_int in
+        let rank2 = Square.rank sq2 |> Rank.to_int in
+        let rank_diff = abs (rank1 - rank2) in
+        let file_diff = abs (file1 - file2) in
+        let same_rank = rank1 = rank2 in
+        let same_file = file1 = file2 in
+        let proper_ladder_formation =
+          (not same_rank)
+          && (not same_file)
+          && ((rank_diff = 1 && file_diff <= 2) || (file_diff = 1 && rank_diff <= 2))
+        in
+        if proper_ladder_formation
+        then (
+          let cuts_file =
+            abs (file1 - enemy_king_file) = 1 || abs (file2 - enemy_king_file) = 1
+          in
+          let cuts_rank =
+            abs (rank1 - enemy_king_rank) = 1 || abs (rank2 - enemy_king_rank) = 1
+          in
+          250
+          + (if rank_diff = 1 && file_diff = 1 then 100 else 0)
+          + if cuts_file && cuts_rank then 150 else 0)
+        else if same_rank || same_file
+        then -200
+        else if rank_diff > 2 || file_diff > 2
+        then -150
+        else 0
+      in
+      (* Score the best-coordinated pair, so the result does not depend on the
+         order in which pieces are found *)
       let pieces = !major_piece_sqs in
-      (match pieces with
-       | sq1 :: sq2 :: _ ->
-         let file1 = Square.file sq1 |> File.to_int in
-         let rank1 = Square.rank sq1 |> Rank.to_int in
-         let file2 = Square.file sq2 |> File.to_int in
-         let rank2 = Square.rank sq2 |> Rank.to_int in
-         (* Calculate differences *)
-         let rank_diff = abs (rank1 - rank2) in
-         let file_diff = abs (file1 - file2) in
-         (* Check if pieces are on same rank *)
-         let same_rank = rank1 = rank2 in
-         (* Check if pieces are on same file *)
-         let same_file = file1 = file2 in
-         (* CRITICAL: For proper ladder mate, pieces must be ADJACENT (exactly 1 apart)
-           on either rank OR file, but NOT both at once, and NOT same rank/file.
-           This prevents "jumping over" the king. *)
-         let proper_ladder_formation =
-           (not same_rank)
-           && (not same_file)
-           &&
-           (* Different rank AND file *)
-           ((rank_diff = 1 && file_diff = 1)
-            (* Diagonal adjacent *)
-            || (rank_diff = 1 && file_diff <= 2)
-            ||
-            (* Close on rank, near on file *)
-            (file_diff = 1 && rank_diff <= 2))
-           (* Close on file, near on rank *)
-         in
-         if proper_ladder_formation
-         then (
-           (* EXCELLENT! Proper adjacent ladder formation *)
-           bonus := !bonus + 250;
-           (* Extra bonus if EXACTLY adjacent diagonally (knight's move away or closer) *)
-           if rank_diff = 1 && file_diff = 1 then bonus := !bonus + 100;
-           (* Perfect diagonal adjacency! *)
-
-           (* Check if pieces are cutting off king's escape *)
-           let piece1_cuts_king_file = abs (file1 - enemy_king_file) = 1 in
-           let piece2_cuts_king_file = abs (file2 - enemy_king_file) = 1 in
-           let piece1_cuts_king_rank = abs (rank1 - enemy_king_rank) = 1 in
-           let piece2_cuts_king_rank = abs (rank2 - enemy_king_rank) = 1 in
-           if
-             (piece1_cuts_king_file || piece2_cuts_king_file)
-             && (piece1_cuts_king_rank || piece2_cuts_king_rank)
-           then bonus := !bonus + 150
-           (* Perfect trap - cutting off escape squares! *))
-         else if
-           (* Penalize if not in proper ladder formation *)
-           same_rank
-         then bonus := !bonus - 200 (* Very bad - same rank allows king to escape *)
-         else if same_file
-         then bonus := !bonus - 200 (* Very bad - same file allows king to escape *)
-         else if rank_diff > 2 || file_diff > 2
-         then bonus := !bonus - 150 (* Too far apart - not coordinating properly *)
-         else () (* Other formations - neutral *);
-         (* Bonus for keeping pieces safe from enemy king *)
-         List.iter
-           (fun sq ->
-              let file = Square.file sq |> File.to_int in
-              let rank = Square.rank sq |> Rank.to_int in
-              let file_dist = abs (file - enemy_king_file) in
-              let rank_dist = abs (rank - enemy_king_rank) in
-              let king_distance = max file_dist rank_dist in
-              (* Penalize if too close to enemy king (can be captured) *)
-              if king_distance = 1
-              then bonus := !bonus - 150 (* HUGE danger! King can capture *)
-              else if king_distance = 2
-              then bonus := !bonus + 30 (* Good safe distance *)
-              else if king_distance >= 3
-              then bonus := !bonus + 10 (* Safe *))
-           pieces
-       | _ -> ());
+      let rec best_pair = function
+        | [] -> min_int
+        | sq :: rest ->
+          List.fold_left
+            (fun acc other -> max acc (pair_bonus sq other))
+            (best_pair rest)
+            rest
+      in
+      bonus := !bonus + best_pair pieces;
+      (* Keep every major piece out of reach of the enemy king *)
+      List.iter
+        (fun sq ->
+           let file_dist = abs ((Square.file sq |> File.to_int) - enemy_king_file) in
+           let rank_dist = abs ((Square.rank sq |> Rank.to_int) - enemy_king_rank) in
+           match max file_dist rank_dist with
+           | 1 -> bonus := !bonus - 150
+           | 2 -> bonus := !bonus + 30
+           | _ -> bonus := !bonus + 10)
+        pieces;
       !bonus))
 ;;
 
@@ -342,24 +248,13 @@ let evaluate_fifty_move_incentive (pos : Position.t) (material_diff : int) : int
       then 150 (* Getting close, 20 halfmoves left *)
       else 75 (* Somewhat close, 40 halfmoves left *)
     in
-    (* Scale penalty by material advantage - stronger penalty when winning *)
-    if material_diff > 300
-    then
-      (* Winning significantly - STRONGLY avoid the draw *)
-      -(base_penalty * 3)
-    else if material_diff > 100
-    then
-      (* Winning - avoid the draw *)
-      -(base_penalty * 2)
-    else if material_diff < -300
-    then
-      (* Losing significantly - actually WANT the draw! *)
-      base_penalty * 2
-    else if material_diff < -100
-    then
-      (* Losing - draw is better than losing *)
-      base_penalty
-    else
-      (* Close to equal - mild penalty to avoid draw by repetition *)
-      -base_penalty)
+    (* Scale by material advantage. The term is antisymmetric (the same position
+       scores the same from either side), so the side to move does not matter:
+       the side that is ahead is pushed to make progress. *)
+    let sign = if material_diff > 0 then -1 else 1 in
+    if abs material_diff > 300
+    then sign * base_penalty * 3
+    else if abs material_diff > 100
+    then sign * base_penalty * 2
+    else 0)
 ;;

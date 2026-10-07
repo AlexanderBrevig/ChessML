@@ -12,15 +12,12 @@
 open Chessml_core
 open Types
 
-(** Count pawns on a file for a color using bitboards *)
-let count_pawns_on_file_bb pos file_int color =
-  let pawns = Position.get_pieces pos color Pawn in
-  (* Create file mask by setting all squares on that file *)
-  let file_mask = ref Bitboard.empty in
-  for rank = 0 to 7 do
-    file_mask := Bitboard.set !file_mask (file_int + (rank * 8))
-  done;
-  Bitboard.population (Int64.logand pawns !file_mask)
+(** Count pawns of a color on a file (0-7) *)
+let count_pawns_on_file pos file color =
+  Bitboard.population
+    (Int64.logand
+       (Position.get_pieces pos color Pawn)
+       (Int64.shift_left Bitboard.file_a file))
 ;;
 
 (** Check if a pawn is passed (no enemy pawns can stop it) *)
@@ -75,25 +72,22 @@ let is_passed_pawn (pos : Position.t) (sq : int) (color : color) : bool =
 (** Check if a pawn is doubled (another friendly pawn on same file) *)
 let is_doubled_pawn (pos : Position.t) (sq : int) (color : color) : bool =
   let file = sq mod 8 in
-  count_pawns_on_file_bb pos file color > 1
-;;
-
-(** Count pawns on a file for a color *)
-let count_pawns_on_file (pos : Position.t) (file : int) (color : color) : int =
-  count_pawns_on_file_bb pos file color
+  count_pawns_on_file pos file color > 1
 ;;
 
 (** Check if a pawn is isolated (no friendly pawns on adjacent files) *)
 let is_isolated_pawn (pos : Position.t) (sq : int) (color : color) : bool =
   let file = sq mod 8 in
   let has_support =
-    (file > 0 && count_pawns_on_file_bb pos (file - 1) color > 0)
-    || (file < 7 && count_pawns_on_file_bb pos (file + 1) color > 0)
+    (file > 0 && count_pawns_on_file pos (file - 1) color > 0)
+    || (file < 7 && count_pawns_on_file pos (file + 1) color > 0)
   in
   not has_support
 ;;
 
-(** Check if a pawn is backward (can't safely advance, no support) *)
+(** Check if a pawn is backward: it has neighbours on adjacent files, but all of
+    them are ahead of it, so no pawn can come to its defence. Isolated pawns are
+    penalized separately and are not also counted as backward. *)
 let is_backward_pawn (pos : Position.t) (sq : int) (color : color) : bool =
   let file = sq mod 8 in
   let rank = sq / 8 in
@@ -116,7 +110,7 @@ let is_backward_pawn (pos : Position.t) (sq : int) (color : color) : bool =
          | _ -> ()
        done)
     files_to_check;
-  not !has_defender
+  (not !has_defender) && not (is_isolated_pawn pos sq color)
 ;;
 
 (** Check if pawn has friendly pawn support (connected or chain) *)
@@ -165,7 +159,6 @@ let evaluate_pawn_structure_inner (pos : Position.t) (color : color) : int =
            | 4 -> 60 (* 5th rank - doubled *)
            | 5 -> 150 (* 6th rank - doubled, very strong incentive *)
            | 6 -> 300 (* 7th rank - tripled, must push! *)
-           | 7 -> 800 (* About to promote! - massive bonus *)
            | _ -> 0
          in
          bonus := !bonus + passed_bonus;

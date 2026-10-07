@@ -20,7 +20,6 @@
   polyglot_random
   zobrist
   game
-  eval_helpers
   eval_pawn_structure
   eval_pieces
   eval_king_safety

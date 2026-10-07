@@ -86,6 +86,15 @@ let count_non_pawn_material pos color =
   + Bitboard.population (get_pieces pos color Queen)
 ;;
 
+(** Material of a color in centipawns (kings excluded) *)
+let material pos color =
+  List.fold_left
+    (fun acc kind ->
+       acc + (Bitboard.population (get_pieces pos color kind) * PieceKind.value kind))
+    0
+    [ Pawn; Knight; Bishop; Rook; Queen ]
+;;
+
 (** XOR [piece] on [sq] into its piece and color bitboards, the occupancy and the
     key. Adding and removing a piece are the same operation. Does not touch the
     board array. *)
