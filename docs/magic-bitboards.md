@@ -3,442 +3,139 @@ layout: default
 title: Magic Bitboards
 parent: Chess Programming Guide
 nav_order: 2
-description: "Fast sliding piece attack generation using magic numbers"
+description: "My notes on looking up rook and bishop attacks with magic multiplication"
 permalink: /docs/magic-bitboards
 ---
 
 # Magic Bitboards
 
-## What Are Magic Bitboards?
+These are my notes on how ChessML finds the squares a rook, bishop or queen attacks. They describe how I understand the trick and what ChessML does; the real reference is the [Chess Programming Wiki](https://www.chessprogramming.org/Magic_Bitboards).
 
-Magic bitboards are a technique for rapidly generating sliding piece (rook, bishop, queen) attacks using pre-computed lookup tables. They use "magic numbers" and bit manipulation to map occupancy patterns to attack bitboards in constant time.
+## The problem
 
-**Elo Impact:** ~50-100 Elo compared to slower attack generation methods. The speed gain allows searching more nodes per second.
+A knight on a given square always attacks the same squares, so a 64-entry table is enough (see [Bitboards]({% link docs/bitboards.md %})). A rook is different: it slides until it hits something, so its attacks depend on what else is on the board.
 
-## Why They're Needed
-
-Sliding pieces (rooks, bishops, queens) can move different distances depending on blockers:
+Here is a rook on e4 with other pieces on c4, g4, e6 and e2 (`R` is the rook, `x` a piece in the way, `*` an empty square the rook reaches):
 
 ```
-Rook on e4, no blockers:
-████████
-░░░░█░░░  Can move to any square
-░░░░█░░░  on rank or file
-░░░░█░░░
-███▓████  (█ = can reach)
-░░░░█░░░
-░░░░█░░░
-░░░░█░░░
-████████
-
-Rook on e4, with blockers:
-░░░░░░░░
-░░░░█░░░  Blocked by pieces on
-░░░░█░░░  c4, e6, e2, g4
-░░░░█░░░
-░░█▓████  (█ = can reach, ░ = blocked)
-░░░░█░░░
-░░░░░░░░
-░░░░░░░░
+ 8 | .  .  .  .  .  .  .  .
+ 7 | .  .  .  .  .  .  .  .
+ 6 | .  .  .  .  x  .  .  .
+ 5 | .  .  .  .  *  .  .  .
+ 4 | .  .  x  *  R  *  x  .
+ 3 | .  .  .  .  *  .  .  .
+ 2 | .  .  .  .  x  .  .  .
+ 1 | .  .  .  .  .  .  .  .
+     a  b  c  d  e  f  g  h
 ```
 
-Computing attacks on-the-fly is slow. You need to:
+The rook attacks the four `*` squares and also the four `x` squares: if the piece there is an enemy, it can be captured (if it is a friend, it is defended). Everything behind them (e7, e8, b4, a4, h4, e1) is out of reach.
 
-1. Check each direction
-2. Stop at first blocker
-3. Build attack bitboard
+The obvious way to compute this is to walk each of the four directions square by square and stop at the first piece. That works, and ChessML does exactly that, but only once, at startup, to fill a table. Magic bitboards are a way to turn "rook on e4, this occupancy" into an index into that table.
 
-Magic bitboards let you do this in **one memory lookup** instead!
+## Only some squares matter
 
-## The Core Idea
+For a rook on e4, only the pieces on the same file and rank can change its attacks, and not even all of those. A piece on e8 does not matter: the rook reaches e8 whether it is empty or occupied, and there is nothing behind it. The same holds for the other edge squares. So the squares that matter (the "relevant occupancy mask", `m` below) are e2 to e7 and b4 to g4, without e4 itself:
 
-For each square and each piece type:
+```
+ 8 | .  .  .  .  .  .  .  .
+ 7 | .  .  .  .  m  .  .  .
+ 6 | .  .  .  .  m  .  .  .
+ 5 | .  .  .  .  m  .  .  .
+ 4 | .  m  m  m  R  m  m  .
+ 3 | .  .  .  .  m  .  .  .
+ 2 | .  .  .  .  m  .  .  .
+ 1 | .  .  .  .  .  .  .  .
+     a  b  c  d  e  f  g  h
+```
 
-1. Pre-compute **all possible blocker configurations**
-2. Pre-compute **attack bitboard** for each configuration
-3. Find a **magic number** that maps configurations → unique indices
-4. Store attacks in a **lookup table**
+That is 10 squares, so 2^10 = 1024 possible arrangements of pieces on them. A rook has 10 to 12 relevant squares depending on where it stands (12 in the corners), and a bishop 5 to 9, so a bishop needs between 32 and 512 entries per square.
 
-At runtime:
+## The magic part
+
+AND the occupancy with the mask and you have a 64-bit number with at most 12 bits set, scattered over the board. To use it as an array index, those bits need to be squeezed together into a small number. The trick is to multiply by a carefully chosen 64-bit constant (the magic) and keep the top N bits of the product, where N is the number of relevant squares:
+
+```
+index = ((occupancy AND mask) * magic) >> (64 - N)
+```
+
+The multiplication shifts copies of each relevant bit to many places; a good magic is one where the top N bits end up different for any two arrangements that give different attacks. Two arrangements may share an index if they produce the same attack set (a piece behind a blocker, for example); that collision is harmless, and the Wiki calls it constructive. Nobody computes magics in closed form as far as I know: you try random candidates until one has no harmful collision for all arrangements.
+
+## What ChessML does
+
+ChessML does not search for magics. `lib/engine/magic.ml` has 64 hard-coded rook magics and 64 bishop magics, and builds everything else from them. For each square it stores a small record:
 
 ```ocaml
-let attacks = magic_table.(square).(hash(blockers))
-```
-
-**One lookup, instant result!**
-
-## How Magic Numbers Work
-
-A magic number `M` and shift `S` transform a blocker pattern into a table index:
-
-```ocaml
-let index blockers magic shift =
-  let product = Int64.mul blockers magic in
-  let shifted = Int64.shift_right_logical product shift in
-  Int64.to_int shifted
-```
-
-The magic number is chosen so that **different blocker patterns produce different indices** (no collisions in the table).
-
-## Relevant Occupancy
-
-Not all squares matter for blocking. For a rook on e4:
-
-```
-Relevant squares (affect attacks):
-░░░░░░░░
-░░░░█░░░  Only squares between
-░░░░█░░░  the rook and board edges
-░░░░█░░░  matter as blockers
-░░█▓█░█░  (edges don't block)
-░░░░█░░░
-░░░░█░░░
-░░░░░░░░
-░░░░░░░░
-```
-
-**Why exclude edges?** A piece on the edge is already at the limit—doesn't matter if there's another blocker beyond it.
-
-This reduces table size significantly!
-
-## Pre-Computation Process
-
-### 1. Generate Relevant Occupancy Mask
-
-```ocaml
-let rook_mask square =
-  let rank = square / 8 in
-  let file = square mod 8 in
-  let mask = ref 0L in
-
-  (* North (exclude rank 7) *)
-  for r = rank + 1 to 6 do
-    mask := Bitboard.set !mask (r * 8 + file)
-  done;
-
-  (* South (exclude rank 0) *)
-  for r = 1 to rank - 1 do
-    mask := Bitboard.set !mask (r * 8 + file)
-  done;
-
-  (* East (exclude file 7) *)
-  for f = file + 1 to 6 do
-    mask := Bitboard.set !mask (rank * 8 + f)
-  done;
-
-  (* West (exclude file 0) *)
-  for f = 1 to file - 1 do
-    mask := Bitboard.set !mask (rank * 8 + f)
-  done;
-
-  !mask
-```
-
-### 2. Generate All Blocker Configurations
-
-```ocaml
-let generate_blockers mask =
-  let bits = Bitboard.to_list mask in
-  let n = List.length bits in
-  let configs = ref [] in
-
-  (* Generate all 2^n subsets *)
-  for i = 0 to (1 lsl n) - 1 do
-    let blockers = ref 0L in
-    List.iteri (fun j bit ->
-      if (i land (1 lsl j)) <> 0 then
-        blockers := Bitboard.set !blockers bit
-    ) bits;
-    configs := !blockers :: !configs
-  done;
-
-  !configs
-```
-
-For a rook, typically 10-12 relevant squares → 1024-4096 configurations.
-
-### 3. Compute Attacks for Configuration
-
-```ocaml
-let compute_rook_attacks square blockers =
-  let attacks = ref 0L in
-  let rank = square / 8 in
-  let file = square mod 8 in
-
-  (* North *)
-  for r = rank + 1 to 7 do
-    let sq = r * 8 + file in
-    attacks := Bitboard.set !attacks sq;
-    if Bitboard.contains blockers sq then break
-  done;
-
-  (* South, East, West similarly... *)
-
-  !attacks
-```
-
-### 4. Find Magic Number
-
-This is the hard part! You need to find a magic number that maps all blocker configurations to unique indices without collisions.
-
-```ocaml
-let find_magic square mask shift =
-  let blockers = generate_blockers mask in
-  let attempts = ref 0 in
-
-  while !attempts < 100_000_000 do
-    attempts := !attempts + 1;
-    let magic = random_sparse_64bit () in  (* Random with few bits *)
-    let table = Array.make (1 lsl shift) None in
-    let success = ref true in
-
-    List.iter (fun blocker_config ->
-      let attacks = compute_attacks square blocker_config in
-      let idx = magic_index blocker_config magic shift in
-
-      match table.(idx) with
-      | None -> table.(idx) <- Some attacks
-      | Some existing_attacks ->
-        if attacks <> existing_attacks then
-          success := false  (* Collision! *)
-    ) blockers;
-
-    if !success then
-      return (magic, table)
-  done;
-
-  failwith "Couldn't find magic number"
-```
-
-**Random sparse numbers** (few 1-bits) work better as magics. This is empirically discovered.
-
-### 5. Build Lookup Tables
-
-```ocaml
-type magic_entry = {
-  mask: bitboard;
-  magic: int64;
-  shift: int;
-  attacks: bitboard array;
-}
-
-let rook_magics = Array.init 64 (fun sq ->
-  let mask = rook_mask sq in
-  let shift = 64 - (Bitboard.population mask) in
-  let magic, attacks = find_magic sq mask shift in
-  { mask; magic; shift; attacks }
-)
-```
-
-## Runtime Usage
-
-At runtime, attack generation is trivial:
-
-```ocaml
-let rook_attacks square occupied =
-  let magic = rook_magics.(square) in
-
-  (* Get relevant blockers *)
-  let blockers = Int64.logand occupied magic.mask in
-
-  (* Hash to index *)
-  let product = Int64.mul blockers magic.magic in
-  let index = Int64.to_int (Int64.shift_right_logical product magic.shift) in
-
-  (* Lookup attacks *)
-  magic.attacks.(index)
-```
-
-**Total: ~5 operations!** Compare this to checking each square in each direction.
-
-## Bishop Magic Bitboards
-
-Bishops work identically, just with diagonal masks:
-
-```ocaml
-let bishop_mask square =
-  let rank = square / 8 in
-  let file = square mod 8 in
-  let mask = ref 0L in
-
-  (* Northeast diagonal (exclude edges) *)
-  let r, f = ref (rank + 1), ref (file + 1) in
-  while !r <= 6 && !f <= 6 do
-    mask := Bitboard.set !mask (!r * 8 + !f);
-    incr r; incr f
-  done;
-
-  (* Northwest, Southeast, Southwest similarly... *)
-
-  !mask
-```
-
-Bishops typically have 7-9 relevant squares → 128-512 configurations.
-
-## Queen Attacks
-
-Queens combine rook and bishop attacks:
-
-```ocaml
-let queen_attacks square occupied =
-  let rook_atk = rook_attacks square occupied in
-  let bishop_atk = bishop_attacks square occupied in
-  Int64.logor rook_atk bishop_atk
-```
-
-No separate magic needed—just combine the results!
-
-## Pre-Computed Magic Numbers
-
-Finding magics is slow (~minutes), so engines **hard-code** them:
-
-```ocaml
-let rook_magics = [|
-  0x0080001020400080L;  (* a1 *)
-  0x0040001000200040L;  (* b1 *)
-  0x0080081000200080L;  (* c1 *)
-  (* ... 61 more ... *)
-|]
-
-let bishop_magics = [|
-  0x0002020202020200L;  (* a1 *)
-  0x0002020202020000L;  (* b1 *)
-  (* ... 61 more ... *)
-|]
-```
-
-These are discovered once during development and never change.
-
-## Memory Usage
-
-**Rook tables:** ~800 KB (64 squares × ~12 KB per square)
-**Bishop tables:** ~40 KB (64 squares × ~0.6 KB per square)
-**Total:** ~1 MB
-
-This is tiny by modern standards and fits in L2/L3 cache!
-
-## Performance Comparison
-
-| Method                 | Operations per Lookup | Relative Speed |
-| ---------------------- | --------------------- | -------------- |
-| Classical (loops)      | ~20-40                | 1x             |
-| Magic bitboards        | ~5-8                  | 5-8x faster    |
-| Hyperbola Quintessence | ~15-20                | 2-3x faster    |
-
-Magic bitboards are the fastest general-purpose method.
-
-## Complete Implementation
-
-```ocaml
-module Magic = struct
-  type magic_entry = {
-    mask: int64;
-    magic: int64;
-    shift: int;
-    attacks: int64 array;
+type magic_entry =
+  { mask : Int64.t (* relevant occupancy bits (no edges) *)
+  ; magic : Int64.t
+  ; shift : int (* 64 - number of relevant bits *)
+  ; offset : int (* where this square's slice starts in the shared table *)
   }
-
-  let rook_magics = Array.make 64 {
-    mask = 0L; magic = 0L; shift = 0; attacks = [||]
-  }
-
-  let bishop_magics = Array.make 64 {
-    mask = 0L; magic = 0L; shift = 0; attacks = [||]
-  }
-
-  (* Initialize at startup *)
-  let init () =
-    load_precomputed_magics ();
-    generate_attack_tables ()
-
-  (* Fast attack lookup *)
-  let rook_attacks square occupied =
-    let entry = rook_magics.(square) in
-    let blockers = Int64.logand occupied entry.mask in
-    let hash = Int64.mul blockers entry.magic in
-    let index = Int64.to_int (Int64.shift_right_logical hash entry.shift) in
-    entry.attacks.(index)
-
-  let bishop_attacks square occupied =
-    let entry = bishop_magics.(square) in
-    let blockers = Int64.logand occupied entry.mask in
-    let hash = Int64.mul blockers entry.magic in
-    let index = Int64.to_int (Int64.shift_right_logical hash entry.shift) in
-    entry.attacks.(index)
-
-  let queen_attacks square occupied =
-    Int64.logor
-      (rook_attacks square occupied)
-      (bishop_attacks square occupied)
-end
 ```
 
-## Common Pitfalls
-
-### 1. Including Edge Squares in Mask
+The lookup is the formula above plus the offset (from `magic.ml`):
 
 ```ocaml
-(* Wrong: Include rank 7 *)
-for r = rank + 1 to 7 do ...
+let magic_index (entry : magic_entry) (blockers : Int64.t) : int =
+  let relevant = Int64.logand blockers entry.mask in
+  let hash = Int64.mul relevant entry.magic in
+  let index = Int64.to_int (Int64.shift_right_logical hash entry.shift) in
+  entry.offset + index
+;;
 
-(* Correct: Exclude rank 7 *)
-for r = rank + 1 to 6 do ...
+let rook_attacks (sq : int) (blockers : Int64.t) : Int64.t =
+  let idx = magic_index rook_magics.(sq) blockers in
+  rook_attacks_table.(idx)
+;;
 ```
 
-Edge squares don't change attacks, so excluding them reduces table size.
+Queen attacks are the rook and bishop attacks ORed together.
 
-### 2. Wrong Shift Calculation
+`Magic.init` fills the tables. For every square it computes the mask, enumerates every arrangement of pieces on it, works out the attacks with the slow direction walk and stores them at the magic index. You do not call it yourself: `lib/engine/movegen.ml` runs `let () = Magic.init ()` when the module is initialised, and everything else asks `Movegen` for attacks.
+
+### Table layout
+
+There are two common ways to lay out the tables:
+
+- **Plain**: every square gets room for the worst case, 4096 entries for rooks and 512 for bishops, with the same shift everywhere. Simple, but 64 × (4096 + 512) entries of 8 bytes is about 2.3 MB.
+- **Fancy**: each square gets exactly 2^N entries for its own N, and all squares share one packed array, with an offset saying where each square's slice starts. That needs 102400 rook entries and 5248 bishop entries, 107648 in total (about 841 KB). As far as I can tell from its source, Stockfish uses this layout, or the BMI2 `pext` instruction where the CPU has it.
+
+ChessML uses the fancy layout: `rook_attacks_table` has 102400 entries and `bishop_attacks_table` 5248, and `init` advances the offset by `1 lsl bits` after each square.
+
+### Finding magics yourself
+
+If you want to generate your own, the usual recipe is: pick a random 64-bit number with few bits set (ANDing three random numbers together is the common way), and check it against every arrangement of the square. People report that this finds a full set in seconds. A simplified sketch of the check, not ChessML code:
 
 ```ocaml
-(* Wrong: *)
-let shift = 64 - num_relevant_squares in
-
-(* Correct: Shift is table size dependent *)
-let shift = 64 - (Bitboard.population mask) in
+(* simplified sketch: does [magic] index every arrangement without a harmful collision? *)
+let magic_works ~bits ~configs ~attacks magic =
+  let table = Array.make (1 lsl bits) None in
+  let ok = ref true in
+  Array.iteri
+    (fun i occ ->
+       let idx =
+         Int64.to_int (Int64.shift_right_logical (Int64.mul occ magic) (64 - bits))
+       in
+       match table.(idx) with
+       | None -> table.(idx) <- Some attacks.(i)
+       | Some a -> if not (Int64.equal a attacks.(i)) then ok := false)
+    configs;
+  !ok
 ```
 
-### 3. Not Checking for Collisions
+The table has `1 lsl bits` entries, not `1 lsl (64 - bits)`; mixing up the two allocates an absurd array.
 
-When finding magics, verify no collisions occur:
+## Pitfalls
 
-```ocaml
-(* Wrong: Assume magic works *)
-let magic = random_number () in
+- **Arithmetic instead of logical shift.** In OCaml, `Int64.shift_right` keeps the sign bit, so a product with the top bit set gives a negative index. Use `Int64.shift_right_logical`.
+- **Forgetting the mask.** The magic only works on the relevant squares; multiplying the full occupancy gives garbage indices.
+- **Edge squares in the mask.** Including them doubles or quadruples the arrangements, and published magics will not fit the larger index.
+- **Magics from somewhere else.** A magic only works with the same square numbering (a1 = 0 or a8 = 0), the same masks and the same shift as where it came from.
+- **No check after filling.** If a magic is wrong, `init` silently overwrites entries and some attacks are wrong in rare positions. ChessML's `init` does not check for collisions either; the [perft tests](https://github.com/AlexanderBrevig/ChessML/blob/main/test/engine/test_perft.ml) are what would catch a bad magic.
 
-(* Correct: Test all configurations *)
-let is_valid = test_all_blocker_configs magic mask in
-if is_valid then use_magic else try_another
-```
+## Sources
 
-### 4. Forgetting to Initialize
-
-```ocaml
-(* Wrong: Use before init *)
-let attacks = Magic.rook_attacks square occupied in
-
-(* Correct: Initialize first *)
-let () = Magic.init () in
-let attacks = Magic.rook_attacks square occupied in
-```
-
-## Alternative: Fancy Magic Bitboards
-
-"Fancy" magic bitboards don't separate tables per square—they use one giant shared table:
-
-```ocaml
-let shared_attacks = Array.make 107648 0L  (* Total of all entries *)
-
-let rook_offsets = [| 0; 4096; 6144; ... |]  (* Where each square starts *)
-```
-
-**Pros:** Slightly faster (one array lookup)
-**Cons:** More complex initialization
-
-Most engines use regular magic bitboards for simplicity.
-
-## Further Reading
-
-- [Bitboards](bitboards.md) - Foundation for magic bitboards
-- [Chess Programming Wiki - Magic Bitboards](https://www.chessprogramming.org/Magic_Bitboards)
-- [Finding Magic Numbers](https://www.chessprogramming.org/Looking_for_Magics)
-- `lib/engine/magic.ml` - See implementation
+- [Chess Programming Wiki: Magic Bitboards](https://www.chessprogramming.org/Magic_Bitboards), for the idea, the plain and fancy names and the table sizes
+- [Chess Programming Wiki: Looking for Magics](https://www.chessprogramming.org/Looking_for_Magics), for how magics are found
+- ChessML's code: [`lib/engine/magic.ml`](https://github.com/AlexanderBrevig/ChessML/blob/main/lib/engine/magic.ml), [`lib/engine/movegen.ml`](https://github.com/AlexanderBrevig/ChessML/blob/main/lib/engine/movegen.ml)

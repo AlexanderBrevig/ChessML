@@ -3,349 +3,93 @@ layout: default
 title: Transposition Tables
 parent: Chess Programming Guide
 nav_order: 5
-description: "Cache position evaluations to avoid redundant search"
+description: "My notes on remembering search results by position"
 permalink: /docs/transposition-tables
 ---
 
 # Transposition Tables
 
-## What Is a Transposition Table?
+These are my notes on transposition tables (TT), written while building ChessML. They describe how I understand them and what ChessML does; for the real reference, see the [Chess Programming Wiki](https://www.chessprogramming.org/Transposition_Table).
 
-A transposition table (TT) is a hash table that caches position evaluations during [search](alpha-beta-pruning.md). When you encounter a position you've already analyzed, you can reuse the previous result instead of searching it again.
+## The idea
 
-**Elo Impact:** ~200-300 Elo. This is one of the biggest single improvements you can make to a chess engine.
+Different move orders often lead to the same position: 1. e4 e5 2. Nf3 Nc6 and 1. Nf3 Nc6 2. e4 e5 end up in the same place. A plain search would analyze that position once per path. A transposition table is a big hash table, keyed by the position's [Zobrist key]({% link docs/zobrist-hashing.md %}), where the search writes down what it found about each position so it can reuse it when it gets there again.
 
-## Why They're Essential
+Because of alpha-beta, a search result is often not an exact score but a bound, so each entry says which kind it is:
 
-### Transpositions Are Common
+- **Exact**: the score fell inside the window `(alpha, beta)`; it is the true value at that depth.
+- **Lower bound**: some move reached beta and the search stopped early; the true value is at least this.
+- **Upper bound**: no move beat alpha; the true value is at most this.
 
-The same position can be reached through different move orders:
+An entry also stores its search depth (the score only stands in for a search at most that deep) and the best move, which is worth trying first even when the score is not usable (see [Move Ordering]({% link docs/move-ordering.md %}#tt-move)).
 
-```
-1. e4 e5 2. Nf3 Nc6  ← Same position
-1. Nf3 Nc6 2. e4 e5  ← Different move order
-```
+## What ChessML does
 
-At depth 6+, roughly 30-40% of positions searched are transpositions. Without caching, you search each one multiple times—wasting enormous amounts of computation.
-
-### The Math
-
-Consider a position reached by 3 different move sequences:
-
-- Without TT: Search 3 times (e.g., 3 × 10,000 nodes = 30,000 nodes)
-- With TT: Search once, lookup twice (e.g., 10,000 + 2 = 10,002 nodes)
-
-This compounds exponentially with search depth!
-
-## How They Work
-
-### Basic Structure
+The table is a module inside `lib/engine/search.ml`: an array of `tt_entry option`, indexed by the key modulo the array length. Each slot holds one entry (direct-mapped, no buckets):
 
 ```ocaml
-type entry_type =
-  | Exact       (* Exact score: alpha < score < beta *)
-  | LowerBound  (* Beta cutoff: score >= beta *)
-  | UpperBound  (* Alpha cutoff: score <= alpha *)
-
-type tt_entry = {
-  key: int64;          (* Zobrist hash of position *)
-  score: int;          (* Evaluation score *)
-  depth: int;          (* Depth searched *)
-  best_move: move option;  (* Best move found *)
-  entry_type: entry_type;  (* Type of bound *)
-}
-
-let table = Array.make size None
+type tt_entry =
+  { key : int64
+  ; score : int
+  ; depth : int
+  ; best_move : Move.t option
+  ; entry_type : tt_entry_type   (* Exact | LowerBound | UpperBound *)
+  }
 ```
 
-See [Zobrist Hashing](zobrist-hashing.md) for how to generate position keys.
+### Collisions
 
-### Storing Entries
+Many positions map to each slot, so index collisions are normal; that is what replacement is about. To tell them apart the entry keeps the full 64-bit key, and `lookup` treats any other key as a miss. Two positions with the same full key are possible but very rare.
 
-After searching a position:
+### Replacement
+
+When storing, ChessML keeps the existing entry only if it is for the same position, was searched deeper, and the new result is not Exact. In every other case the new entry overwrites the slot, including when the slot holds a different position:
 
 ```ocaml
-let store tt pos_hash depth score best_move entry_type =
-  let index = Int64.to_int (Int64.unsigned_rem pos_hash (Int64.of_int tt.size)) in
-  let entry = {
-    key = pos_hash;
-    score = score;
-    depth = depth;
-    best_move = best_move;
-    entry_type = entry_type;
-  } in
-  tt.table.(index) <- Some entry
+let store tt key depth score best_move entry_type =
+  let idx = index tt key in
+  match tt.table.(idx) with
+  | Some e when Int64.equal e.key key && e.depth > depth && entry_type <> Exact -> ()
+  | _ -> tt.table.(idx) <- Some { key; score; depth; best_move; entry_type }
 ```
 
-### Looking Up Entries
+Many engines use small buckets of entries and an age field instead; ChessML does not.
 
-Before searching a position:
+### Using an entry
 
-```ocaml
-let lookup tt pos_hash =
-  let index = Int64.to_int (Int64.unsigned_rem pos_hash (Int64.of_int tt.size)) in
-  match tt.table.(index) with
-  | Some entry when entry.key = pos_hash -> Some entry
-  | _ -> None
-```
-
-## Entry Types Explained
-
-### Exact Score
-
-You searched with a window `[alpha, beta]` and found a score inside that window:
-
-```ocaml
-if alpha < score && score < beta then
-  store tt pos_hash depth score best_move Exact
-```
-
-This is the "gold standard" - you can reuse this score directly.
-
-### Lower Bound (Beta Cutoff)
-
-You found a move so good that it caused a beta cutoff:
-
-```ocaml
-if score >= beta then
-  store tt pos_hash depth score best_move LowerBound
-```
-
-**Meaning:** The true score is _at least_ this good (possibly better). You stopped searching because the opponent won't let you reach this position.
-
-### Upper Bound (Alpha Cutoff)
-
-You searched all moves and none improved alpha:
-
-```ocaml
-if score <= alpha then
-  store tt pos_hash depth score best_move UpperBound
-```
-
-**Meaning:** The true score is _at most_ this good (possibly worse). This position doesn't help us.
-
-## Using Stored Entries
-
-When you find a cached entry:
-
-```ocaml
-match TranspositionTable.lookup tt pos_hash with
-| Some entry when entry.depth >= depth ->
-  (* Entry is deep enough to use *)
-  (match entry.entry_type with
-   | Exact ->
-     (* Perfect! Return the cached score *)
-     entry.score, entry.best_move
-   | LowerBound when entry.score >= beta ->
-     (* Score is at least this good, and that's enough for beta cutoff *)
-     entry.score, entry.best_move
-   | UpperBound when entry.score <= alpha ->
-     (* Score is at most this good, and that's below alpha *)
-     entry.score, entry.best_move
-   | _ ->
-     (* Can't use the score, but try the move first! *)
-     search_with_move_ordering entry.best_move)
-| Some entry ->
-  (* Entry exists but not deep enough - still use the move hint *)
-  search_with_move_ordering entry.best_move
-| None ->
-  (* No entry, search normally *)
-  normal_search ()
-```
-
-### The Move Hint
-
-{: .important }
-
-> Even when you can't use the cached score, always try the hash move first—it's the most effective move ordering heuristic!
-
-Even when you can't use the cached score, the `best_move` is extremely valuable! Try it first—it's very likely to cause a beta cutoff, improving [alpha-beta pruning](alpha-beta-pruning.md) efficiency. This is the most important component of [move ordering](move-ordering.md).
-
-## Implementation Details
-
-### Table Size
-
-Typical sizes: 16 MB to 1024 MB (configurable by user)
-
-```ocaml
-(* Size in MB -> number of entries *)
-let entries_for_size_mb mb =
-  (mb * 1024 * 1024) / (size_of_entry)
-
-(* Example: 64 MB, 24 bytes per entry = ~2.8M entries *)
-```
-
-### Hash Collisions
-
-Two different positions might hash to the same index (collision). Always verify the full hash:
-
-```ocaml
-match tt.table.(index) with
-| Some entry when entry.key = pos_hash -> (* Correct position *)
-| Some entry -> (* Collision - different position *)
-| None -> (* Empty slot *)
-```
-
-With good hashing (Zobrist), collisions are rare enough that you can use a simple "always replace" strategy for simplicity.
-
-### Replacement Strategy
-
-When a collision occurs, should you keep the old entry or replace it? Common strategies:
-
-**Always Replace** (simplest):
-
-```ocaml
-tt.table.(index) <- Some new_entry
-```
-
-**Depth-Preferred** (keep deeper searches):
-
-```ocaml
-match tt.table.(index) with
-| Some old when old.depth > new_entry.depth -> ()  (* Keep old *)
-| _ -> tt.table.(index) <- Some new_entry         (* Replace *)
-```
-
-**Age-Based** (prefer recent entries):
-
-```ocaml
-(* Add age field, increment each search, replace old entries *)
-```
-
-### Mate Scores
-
-Mate scores need special handling because they're depth-dependent:
-
-```ocaml
-(* When storing *)
-let adjusted_score =
-  if abs score > mate_threshold then
-    if score > 0 then score - ply_from_root
-    else score + ply_from_root
-  else score
-in
-store tt ... adjusted_score ...
-
-(* When retrieving *)
-let adjusted_score =
-  if abs entry.score > mate_threshold then
-    if entry.score > 0 then entry.score + ply_from_root
-    else entry.score - ply_from_root
-  else entry.score
-```
-
-This ensures "mate in 3" remains accurate regardless of where in the tree you are.
-
-## Zobrist Hashing
-
-Transposition tables require fast, high-quality position hashing. See [Zobrist Hashing](zobrist-hashing.md) for details on generating position keys.
-
-Quick version:
-
-```ocaml
-(* XOR together random numbers for each piece on each square *)
-let pos_hash =
-  hash_pieces pos
-  |> hash_castling_rights
-  |> hash_en_passant
-  |> hash_side_to_move
-```
-
-## Concurrent Access
-
-For parallel search, you need thread-safe transposition tables:
-
-```ocaml
-(* Simple approach: lock per entry *)
-type concurrent_tt = {
-  table: tt_entry option array;
-  locks: Mutex.t array;
-}
-
-let store_concurrent tt pos_hash ... =
-  let idx = index tt pos_hash in
-  let lock_idx = idx mod (Array.length tt.locks) in
-  Mutex.lock tt.locks.(lock_idx);
-  tt.table.(idx) <- Some entry;
-  Mutex.unlock tt.locks.(lock_idx)
-```
-
-Or use lock-free atomic operations for even better performance.
-
-## Common Pitfalls
-
-{: .warning }
-
-> **Common Pitfall:** Using `>` instead of `>=` for depth comparison—entries at equal depth are valid!
-
-### 1. Wrong Depth Comparison
-
-```ocaml
-(* Wrong: *)
-if entry.depth > depth then ...
-
-(* Correct: >=, not > *)
-if entry.depth >= depth then ...
-```
-
-An entry at equal depth is still valid!
-
-### 2. Forgetting to Check Hash
-
-```ocaml
-(* Wrong: *)
-match tt.table.(index) with
-| Some entry -> return entry.score  (* Could be wrong position! *)
-
-(* Correct: *)
-match tt.table.(index) with
-| Some entry when entry.key = pos_hash -> return entry.score
-```
-
-### 3. Not Using Move Hints
-
-Even when the score isn't usable, always try the stored move first:
+In `search_node` the TT move is always taken for ordering. The score is only used to end the search of a node when the node is not a PV node (`beta - alpha > 1`), is not the root, and the entry is deep enough (shortened):
 
 ```ocaml
 match entry with
-| Some e -> search_move_first e.best_move (other_moves pos)
-| None -> search_all_moves pos
+| Some e when (not pv_node) && ply > 0 && e.depth >= depth ->
+  let score = Score.of_tt e.score ply in
+  (match e.entry_type with
+   | Exact -> Some score
+   | LowerBound when score >= beta -> Some score
+   | UpperBound when score <= alpha -> Some score
+   | _ -> None)
+| _ -> None
 ```
 
-## Measuring Effectiveness
+Not cutting at PV nodes keeps the principal variation complete.
 
-Track these statistics:
+### Mate scores
 
-```ocaml
-type stats = {
-  lookups: int;          (* Total lookups *)
-  hits: int;             (* Found valid entry *)
-  cutoffs: int;          (* Used cached score *)
-  move_hints: int;       (* Used move but not score *)
-}
-```
+ChessML's [`Score`](https://github.com/AlexanderBrevig/ChessML/blob/main/lib/engine/score.ml) module counts mate distance from the root: being mated at ply `p` scores `-mate + p`. A TT entry, though, may be read at a different ply than it was written, so a root-relative score would be wrong there. Before storing, `Score.to_tt score ply` makes mate scores relative to the node: a winning mate score (at or above `mate_bound`) gets `+ ply`, a losing one gets `- ply`. On the way out, `Score.of_tt score ply` does the opposite at the ply where it is read. As a check: a mate found at ply 9, seen from a node at ply 5, is a mate four plies away from that node, and `mate - 9 + 5 = mate - 4`.
 
-Good TT performance:
+### Size and lifetime
 
-- **Hit rate:** 40-60% at depth 6+
-- **Cutoff rate:** 20-40% (entries with usable scores)
-- **Move hint usage:** 50-80% (when score not usable)
+ChessML estimates a boxed entry at about 80 bytes (`tt_entry_bytes`), so the default UCI `Hash` of 16 MB is about 210,000 entries; changing `Hash` reallocates and empties the table. The table lives in `Search.state`, so it survives from one move to the next during a game; `Search.new_game` (UCI `ucinewgame`, XBoard `new`) clears it.
 
-## Memory vs. Performance
+ChessML has no parallel search, so there is no shared or lock-free table.
 
-Larger tables = more hits = fewer nodes = deeper search = stronger play
+## Pitfalls
 
-But there are diminishing returns:
+- **Mate scores stored without ply adjustment.** The engine then reports wrong mate distances or prefers a longer mate. The store and the load must apply opposite corrections at their own ply.
+- **Comparing only the index.** Many positions map to each slot; without comparing the stored key, the search reads another position's score.
+- **Using a shallow entry's score.** An entry is only as good as the depth it was searched to; use `e.depth >= depth`, but the move can still be used for ordering.
 
-- 16 MB → 64 MB: ~50 Elo gain
-- 64 MB → 256 MB: ~30 Elo gain
-- 256 MB → 1024 MB: ~20 Elo gain
+## Sources
 
-The sweet spot for most engines is 64-256 MB.
-
-## Further Reading
-
-- [Zobrist Hashing](zobrist-hashing.md) - How to hash positions
-- [Alpha-Beta Pruning](alpha-beta-pruning.md) - The search algorithm
-- [Chess Programming Wiki - Transposition Table](https://www.chessprogramming.org/Transposition_Table)
-- `lib/engine/search.ml` - The `TranspositionTable` module and mate score handling (`lib/engine/score.ml`)
+- [Chess Programming Wiki: Transposition Table](https://www.chessprogramming.org/Transposition_Table)
+- ChessML's code: `lib/engine/search.ml` (`TranspositionTable`, `search_node`, `store_tt`), `lib/engine/score.ml`, `lib/protocols/protocol_common.ml` (the `Hash` option)

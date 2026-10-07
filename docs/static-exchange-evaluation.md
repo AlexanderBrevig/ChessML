@@ -3,440 +3,100 @@ layout: default
 title: Static Exchange Evaluation
 parent: Chess Programming Guide
 nav_order: 10
-description: "Calculate material outcome of capture sequences"
+description: "My notes on working out what a capture wins without searching it"
 permalink: /docs/static-exchange-evaluation
 ---
 
 # Static Exchange Evaluation (SEE)
 
-## What Is Static Exchange Evaluation?
+These are my notes on static exchange evaluation and how ChessML implements it. The real reference is the [Chess Programming Wiki](https://www.chessprogramming.org/Static_Exchange_Evaluation).
 
-Static Exchange Evaluation (SEE) calculates the material outcome of a capture sequence on a square. It simulates all captures and recaptures to determine if a capture wins, loses, or trades equally—without actually searching.
+## The idea
 
-**Elo Impact:** ~30-80 Elo. Essential for move ordering and quiescence search pruning. Helps avoid searching obviously bad captures.
+Before searching a capture, it helps to know roughly whether it wins or loses material. SEE answers that by looking at one square only: it lets both sides take turns capturing on it, each time with their cheapest piece that attacks it, and adds up what changes hands. No moves are made on a real board and nothing else on the board is considered, hence "static".
 
-## Why It Matters
+A small example. A white knight takes a pawn on d5, and a black queen defends d5:
 
-Not all captures are good:
+1. Nxd5: White wins the pawn, +100.
+2. Qxd5: Black wins the knight back. From White's side the exchange is now 100 - 320 = -220.
 
-```
-Position: Knight on e4, Queen on e4, Pawn on d5
+Black would certainly recapture here, so the SEE of Nxd5 is -220.
 
-If you play Nxd5:
-- You capture pawn (+100)
-- Opponent captures Qxd5 (-300)
-- Net: -200 centipawns (bad trade!)
+The important detail is that every side may stop. After a capture, the opponent recaptures only if that is good for them. So when the sequence is folded back up, each recapture counts as "the better of capturing and not capturing" for the side that makes it. The first capture is different: it is the move being asked about, so it always happens. Clamping the first step to 0 as well would make every capture look at least even.
 
-SEE tells you this capture loses material.
-```
+Two more examples with ChessML's values (pawn 100, knight 320, bishop 330, queen 900):
 
-Without SEE:
+- Knight takes a bishop that a pawn defends: +330, then the pawn takes the knight, 330 - 320 = +10. The pawn will recapture, so SEE = +10.
+- Queen takes a pawn that a pawn defends: +100, then pawn takes queen. Black gains 900 - 100 = 800 from its own view, and wants it, so SEE = -800.
 
-- Try all captures in quiescence
-- Search bad captures deeply
-- Waste time on losing captures
+## X-rays
 
-With SEE:
+Pieces lined up on the same line attack "through" each other. With a white queen on a1, a white bishop on b2 and a black piece on c3, the queen does not attack c3 at first, but once the bishop has captured there, it does. An implementation that computes every attacker once at the start never sees the queen. ChessML handles this by keeping its own occupancy bitboard: each capture removes the capturing piece from it, and the attackers are recomputed from that occupancy before each step, so sliders behind it become visible.
 
-- Skip bad captures (SEE < 0)
-- Order winning captures first (SEE > 0)
-- Faster search, better move ordering
+## What ChessML does
 
-## How It Works
+`See.evaluate pos move` in `lib/engine/see.ml` uses the swap-list scheme:
 
-Simulate the capture sequence:
+- `gain.(0)` is the value of the first victim.
+- `gain.(d)` is the value of the piece now standing on the square (the one about to be captured) minus `gain.(d-1)`. Each entry is from the point of view of the side making that capture.
+- After every capture, that attacker's square is cleared from `occupied`, and the next side's attackers are `Movegen.attackers_to pos sq side occupied`, masked with `occupied` so pieces already used are not counted again.
+- When nobody can capture any more, the list is folded back from the end, letting each side decline: `gain.(d-1) <- -(max (-gain.(d-1)) gain.(d))`. The answer is `gain.(0)`.
 
-1. Make initial capture
-2. Find least valuable attacker who can recapture
-3. Simulate that recapture
-4. Repeat until no more captures
-5. Return material balance
-
-### Key Insight
-
-Use **least valuable attacker first** (you don't sacrifice your queen to recapture a pawn if a pawn can do it).
-
-## Basic Algorithm
+Shortened from `lib/engine/see.ml`:
 
 ```ocaml
-let rec see pos square attacker_color =
-  (* Find least valuable attacker *)
-  match find_least_valuable_attacker pos square attacker_color with
-  | None -> 0  (* No attacker, capture sequence ends *)
-  | Some (attacker_square, attacker_piece) ->
-    (* Value of piece we're capturing *)
-    let captured_value =
-      match piece_at pos square with
-      | Some p -> piece_value p
-      | None -> 0
-    in
-
-    (* Make the capture *)
-    let new_pos = make_capture pos attacker_square square in
-
-    (* Recursively evaluate opponent's recapture *)
-    let opponent = Color.opponent attacker_color in
-    let opponent_gain = see new_pos square opponent in
-
-    (* Our gain: capture value minus opponent's best response *)
-    max 0 (captured_value - opponent_gain)
-```
-
-### Why Max 0?
-
-You can always choose **not to recapture** if it loses material:
-
-```
-Knight takes pawn (guarded by queen):
-- Capture pawn: +100
-- Queen recaptures: -300
-- Don't recapture! Just take the pawn and run
-
-Net: +100 (not -200)
-```
-
-## Finding Attackers
-
-Identify all pieces that can attack a square:
-
-```ocaml
-let find_attackers pos square color =
-  let attackers = ref Bitboard.empty in
-
-  (* Pawns *)
-  let pawn_attacks = pawn_attacks_to_square square (Color.opponent color) in
-  attackers := !attackers ||| (pawn_attacks &&& get_pawns pos color);
-
-  (* Knights *)
-  let knight_attacks = knight_attacks_pattern square in
-  attackers := !attackers ||| (knight_attacks &&& get_knights pos color);
-
-  (* Bishops and queens (diagonal) *)
-  let diag_attacks = bishop_attacks square (occupied pos) in
-  let diag_pieces = get_bishops pos color ||| get_queens pos color in
-  attackers := !attackers ||| (diag_attacks &&& diag_pieces);
-
-  (* Rooks and queens (straight) *)
-  let straight_attacks = rook_attacks square (occupied pos) in
-  let straight_pieces = get_rooks pos color ||| get_queens pos color in
-  attackers := !attackers ||| (straight_attacks &&& straight_pieces);
-
-  (* Kings *)
-  let king_attacks = king_attacks_pattern square in
-  attackers := !attackers ||| (king_attacks &&& get_king pos color);
-
-  !attackers
-```
-
-### Least Valuable Attacker
-
-```ocaml
-let find_least_valuable_attacker pos square color =
-  let attackers = find_attackers pos square color in
-
-  (* Check pieces in value order *)
-  let check_piece kind bb =
-    let pieces = bb &&& attackers in
-    if Bitboard.is_not_empty pieces then
-      let sq = Bitboard.lsb pieces in
-      Some (sq, { kind; color })
-    else None
+let rec swap depth side occupied on_square =
+  let attackers =
+    Int64.logand (Movegen.attackers_to pos to_sq side occupied) occupied
   in
-
-  match
-    check_piece Pawn (get_pawns pos color)
-  with Some x -> Some x | None ->
-  match
-    check_piece Knight (get_knights pos color)
-  with Some x -> Some x | None ->
-  match
-    check_piece Bishop (get_bishops pos color)
-  with Some x -> Some x | None ->
-  match
-    check_piece Rook (get_rooks pos color)
-  with Some x -> Some x | None ->
-  match
-    check_piece Queen (get_queens pos color)
-  with Some x -> Some x | None ->
-  check_piece King (get_king pos color)
+  match least_valuable pos side attackers with
+  | None -> depth
+  | Some (sq, kind) ->
+    let occupied' = Bitboard.clear occupied sq in
+    let opponent = Color.opponent side in
+    (* A king may only recapture if the square is no longer defended *)
+    if kind = King
+       && Int64.logand (Movegen.attackers_to pos to_sq opponent occupied') occupied' <> 0L
+    then depth
+    else (
+      let depth = depth + 1 in
+      gain.(depth) <- on_square - gain.(depth - 1);   (* promotion bonus left out here *)
+      swap depth opponent occupied' (PieceKind.value kind))
+in
+let depth = swap 0 (Color.opponent mover.color) occupied on_square in
+for d = depth downto 1 do
+  gain.(d - 1) <- -(max (-gain.(d - 1)) gain.(d))
+done;
+gain.(0)
 ```
 
-## Optimized Algorithm
+Some details:
 
-The recursive version is clear but slow. Most engines use an iterative approach:
+- `least_valuable` tries pawn, knight, bishop, rook, queen, king in that order and takes the first attacker found.
+- **En passant**: the victim is the pawn behind the target square, and that square is cleared from the occupancy too.
+- **Promotions**: if the first move promotes, or a pawn recaptures on the last rank, the gain includes the difference between the new piece and a pawn, and the piece left on the square is worth the new piece.
+- **Pins are ignored.** A pinned piece is counted as an attacker even though it may not really be able to capture. This is the usual trade-off; SEE is meant to be cheap and roughly right.
+- It uses only plain material values, never piece-square bonuses.
 
-```ocaml
-let see_optimized pos move =
-  let target_square = move.to_ in
-  let moving_piece = move.piece in
+## Where ChessML uses it
 
-  (* Initialize with captured piece value *)
-  let gain = Array.make 32 0 in
-  gain.(0) <-
-    match move.captured with
-    | Some p -> piece_value p
-    | None -> 0;
+- **Move ordering** (`Search_common.Ordering`): captures with positive SEE are tried first, then equal ones, and losing captures go after the quiet moves. ChessML orders captures by SEE alone; it has no MVV-LVA ordering. See [Move Ordering]({% link docs/move-ordering.md %}).
+- **Quiescence search** (`Search_common.tactical_moves`): only captures with SEE >= 0 and promotions are searched, so the search does not wander into exchanges that clearly lose. See [Quiescence Search]({% link docs/quiescence-search.md %}).
 
-  (* Track material balance alternating sides *)
-  let depth = ref 1 in
-  let attacker_color = ref (Color.opponent moving_piece.color) in
-  let attacker_value = ref (piece_value moving_piece) in
+## A cheap shortcut (not in ChessML)
 
-  (* Simulate captures until no more attackers *)
-  while !depth < 32 do
-    (* Gain for this ply *)
-    gain.(!depth) <- !attacker_value - gain.(!depth - 1);
+If the victim is worth at least as much as the attacker, the capture cannot lose: at worst the opponent recaptures and you stop, ending at victim minus attacker, which is then 0 or more. So victim - attacker is a lower bound on SEE, and engines skip the full calculation when only "is this capture >= 0?" is needed and that bound already answers it. Pawn takes knight never needs the swap list. ChessML always runs the full calculation.
 
-    (* Find next attacker *)
-    match find_least_valuable_attacker pos target_square !attacker_color with
-    | None -> break  (* No more attackers *)
-    | Some (_, piece) ->
-      attacker_value := piece_value piece;
-      attacker_color := Color.opponent !attacker_color;
-      depth := !depth + 1
-  done;
+## Pitfalls
 
-  (* Minimax evaluation of the gain array *)
-  let rec minimax d =
-    if d = !depth then gain.(d)
-    else max gain.(d) (-minimax (d + 1))
-  in
+- **Stale occupancy.** Computing the attackers once, or not removing each capturer from the occupancy, misses x-ray attackers behind it. ChessML had this problem.
+- **Mixing in positional values.** If the gains include piece-square bonuses, equal trades no longer come out as 0 and the attacker order no longer matches the values. ChessML once did this; it now uses plain material.
+- **Clamping the first capture.** Only recaptures are optional. Taking the max with 0 at the root makes every losing capture look even.
+- **King recaptures.** The king may only take if the square is not defended any more, otherwise the swap list contains an illegal capture.
+- **Forgetting en passant.** The captured pawn is not on the target square, so both the victim and the occupancy are wrong if it is treated as a normal capture.
 
-  if !depth = 1 then gain.(0)  (* Only initial capture *)
-  else minimax 1
-```
+## Sources
 
-## X-Ray Attacks
-
-After a piece moves, it might reveal attackers behind it:
-
-```
-Initial: Rook-a1, Bishop-b2, target-c3
-After Bishop captures c3: Rook can now attack c3!
-```
-
-Handle this by updating the occupancy bitboard:
-
-```ocaml
-let occupied = ref (Position.occupied pos) in
-
-(* Remove piece that just moved *)
-occupied := Bitboard.clear !occupied attacker_square;
-
-(* Add piece to target square (if recapturing) *)
-occupied := Bitboard.set !occupied target_square;
-
-(* Recalculate sliding attacks with new occupancy *)
-let new_attackers = find_attackers_with_occupancy pos target_square color !occupied in
-```
-
-## Usage in Move Ordering
-
-### Filter Bad Captures
-
-```ocaml
-let good_captures moves =
-  moves
-  |> List.filter is_capture
-  |> List.filter (fun m -> SEE.evaluate pos m >= 0)
-```
-
-### Order by SEE Score
-
-```ocaml
-let order_captures moves =
-  moves
-  |> List.filter is_capture
-  |> List.map (fun m -> (SEE.evaluate pos m, m))
-  |> List.sort (fun (s1, _) (s2, _) -> compare s2 s1)  (* High to low *)
-  |> List.map snd
-```
-
-## Usage in Quiescence Search
-
-Skip losing captures:
-
-```ocaml
-let quiescence pos alpha beta =
-  let captures = generate_captures pos in
-
-  (* Only consider non-losing captures *)
-  let good_captures =
-    captures |> List.filter (fun m -> SEE.evaluate pos m >= 0) in
-
-  search_moves good_captures alpha beta
-```
-
-This dramatically reduces quiescence search size!
-
-## Example Calculations
-
-### Simple Capture
-
-```
-White pawn takes black knight (undefended):
-- Gain: +300 (knight value)
-- No recapture possible
-SEE = +300
-```
-
-### Equal Trade
-
-```
-White knight takes black bishop (defended by pawn):
-- Capture: +325 (bishop)
-- Recapture: -300 (knight)
-- Net: +25
-- But opponent won't recapture (loses pawn)
-SEE = +325 (opponent stops sequence)
-```
-
-### Losing Capture
-
-```
-White queen takes black pawn (defended by pawn):
-- Capture: +100 (pawn)
-- Recapture: -900 (queen)
-- Net: -800
-SEE = +100 (we stop after taking pawn, don't recapture)
-
-Actually: SEE returns +100 because we can take pawn and leave.
-But from opponent's view, they get queen for pawn: +800 for them.
-
-So move is bad even though SEE > 0!
-
-Better formulation: Always simulate from initial mover's view:
-- We capture pawn: +100
-- They capture queen: +900 for them = -900 for us
-- Net: +100 - 900 = -800
-SEE = -800 (correctly identifies bad capture)
-```
-
-**Correct SEE accounts for forced recaptures!**
-
-## Performance Tips
-
-### 1. Early Exit
-
-```ocaml
-(* If capture wins material without recapture, done *)
-if captured_value > attacker_value && no_defenders then
-  return captured_value
-```
-
-### 2. Lazy Evaluation
-
-```ocaml
-(* Only compute if needed for move ordering *)
-let see_lazy pos move =
-  match move.captured with
-  | None -> 0  (* Not a capture *)
-  | Some victim when piece_value victim < piece_value move.piece ->
-    (* Obviously bad: queen takes pawn *)
-    let defenders = count_defenders pos move.to_ in
-    if defenders > 0 then -piece_value move.piece else piece_value victim
-  | Some victim ->
-    (* Might be good, compute full SEE *)
-    see_full pos move
-```
-
-### 3. Cache Results
-
-```ocaml
-(* Store SEE scores in move structure *)
-type move = {
-  from: square;
-  to_: square;
-  piece: piece;
-  captured: piece option;
-  mutable see_score: int option;  (* Cached *)
-}
-```
-
-## Common Pitfalls
-
-### 1. Forgetting X-Ray Attacks
-
-```ocaml
-(* Wrong: Don't update occupancy *)
-let attackers = find_attackers pos square color in
-
-(* Correct: Update after each capture *)
-let attackers = find_attackers_with_occupancy pos square color occupancy in
-```
-
-### 2. Not Using Least Valuable Attacker
-
-```ocaml
-(* Wrong: Use any attacker *)
-let attacker = first_attacker pos square color in
-
-(* Correct: Use cheapest attacker *)
-let attacker = least_valuable_attacker pos square color in
-```
-
-### 3. Forgetting King Can Attack
-
-```ocaml
-(* Wrong: Skip king *)
-check_piece Pawn || check_piece Knight || ... || check_piece Queen
-
-(* Correct: Include king *)
-... || check_piece Queen || check_piece King
-```
-
-King can capture, especially in endgames!
-
-### 4. Wrong Stopping Condition
-
-```ocaml
-(* Wrong: Always recurse *)
-let rec see pos sq color =
-  captured_value - see pos sq (opponent color)
-
-(* Correct: Stop if no attackers *)
-match find_attacker pos sq color with
-| None -> 0
-| Some attacker -> captured_value - see new_pos sq (opponent color)
-```
-
-## Integration with Search
-
-SEE complements other techniques:
-
-| Technique  | Uses SEE? | Purpose                     |
-| ---------- | --------- | --------------------------- |
-| MVV-LVA    | No        | Quick capture ordering      |
-| SEE        | Yes       | Accurate capture evaluation |
-| Quiescence | Yes       | Prune bad captures          |
-| History    | No        | Quiet move ordering         |
-| Killers    | No        | Non-capture refutations     |
-
-Use MVV-LVA for quick approximation, SEE for accuracy when needed.
-
-## Measuring Effectiveness
-
-Track SEE statistics:
-
-```ocaml
-type see_stats = {
-  captures_evaluated: int;
-  winning_captures: int;  (* SEE > 0 *)
-  equal_captures: int;    (* SEE = 0 *)
-  losing_captures: int;   (* SEE < 0 *)
-  pruned: int;           (* Moves skipped due to SEE *)
-}
-```
-
-Good SEE usage:
-
-- **Prune rate:** 30-50% of captures have negative SEE
-- **Quiescence speedup:** 2-3x faster with SEE pruning
-- **Accuracy:** >95% correct about winning/losing captures
-
-## Further Reading
-
-- [Move Ordering](move-ordering.md) - Uses SEE for capture ordering
-- [Quiescence Search](quiescence-search.md) - Uses SEE to prune bad captures
-- [Chess Programming Wiki - SEE](https://www.chessprogramming.org/Static_Exchange_Evaluation)
-- `lib/engine/see.ml` - See implementation
+- [Chess Programming Wiki: Static Exchange Evaluation](https://www.chessprogramming.org/Static_Exchange_Evaluation)
+- [Chess Programming Wiki: SEE - The Swap Algorithm](https://www.chessprogramming.org/SEE_-_The_Swap_Algorithm), the swap-list scheme ChessML follows
+- ChessML's code: `lib/engine/see.ml`, `lib/engine/search_common.ml`, `lib/engine/movegen.ml` (`attackers_to`)

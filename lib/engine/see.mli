@@ -28,6 +28,6 @@ open Chessml_core
     Example:
     - Pawn takes undefended queen: +900cp (win queen)
     - Queen takes pawn defended by pawn: -800cp (win pawn, lose queen)
-    - Knight takes bishop defended by knight: 0cp (equal trade)
+    - Knight takes knight defended by pawn: 0cp (equal trade)
 *)
 val evaluate : Position.t -> Move.t -> int

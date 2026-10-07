@@ -3,419 +3,153 @@ layout: default
 title: Evaluation Function
 parent: Chess Programming Guide
 nav_order: 11
-description: "Assign numerical scores to chess positions"
+description: "My notes on turning a position into a number, and what ChessML scores"
 permalink: /docs/evaluation-function
 ---
 
 # Evaluation Function
 
-## What Is an Evaluation Function?
+These are my notes on how an engine puts a number on a position, and what ChessML happens to count. They are not a guide to good evaluation; for that, see the [Chess Programming Wiki](https://www.chessprogramming.org/Evaluation).
 
-The evaluation function assigns a numerical score to a chess position, indicating who is winning and by how much. Scores are in **centipawns** (cp), where 100 = one pawn advantage. Positive scores favor the side to move, negative scores favor the opponent.
+## The idea
 
-**Elo Impact:** ~200-400 Elo for going from material-only to a well-tuned evaluation. Evaluation quality directly determines playing strength when [search](alpha-beta-pruning.md) reaches similar depths.
+The search cannot play every game to the end, so at the leaves it stops and asks: "how good does this look?". The evaluation answers with a single integer in centipawns (100 = one pawn). It is static: it looks at the board as it stands and does not try moves. Tactics are the search's job, in particular [quiescence search]({% link docs/quiescence-search.md %}), which keeps resolving captures before the evaluation is asked.
 
-## Why It Matters
+ChessML's `Eval.evaluate` scores from the point of view of the side to move: positive means good for whoever is about to move. That is what negamax wants, because each level just negates the child's score. It returns 0 when neither side has enough material to mate.
 
-The evaluation function is the "eyes" of your engine. When search reaches leaf nodes (or quiescence), evaluation determines which positions look good. A better evaluation function means:
+Almost every evaluation I have read starts with the same two parts, material and piece-square tables, and then adds smaller terms on top.
 
-- Better move selection at equal search depth
-- Correct positional judgment (know when to trade, push pawns, etc.)
-- Understanding of plans and strategy
+## Material
 
-**Example:** Material-only evaluation thinks "rook = 500, knight = 300" but misses that a knight on an outpost is worth more than a rook trapped in a corner.
+Count the pieces and multiply by a value. ChessML uses `PieceKind.value` in `lib/core/types.ml`: pawn 100, knight 320, bishop 330, rook 500, queen 900. `Position.material` adds these up for one color with the king left out, so each side starts with 8 × 100 + 2 × 320 + 2 × 330 + 2 × 500 + 900 = 4000. Counting is one `Bitboard.population` per piece type ([bitboards]({% link docs/bitboards.md %})).
 
-## Core Components
+## Piece-square tables
 
-### 1. Material Count
+A knight in the middle of the board does more than one in the corner. A piece-square table (PST) gives a small bonus or penalty for each piece type on each of the 64 squares, and the evaluation adds up the entries for every piece on the board.
 
-The foundation—count piece values using bitboard operations:
+The part that tripped me up is orientation. The tables are easiest to type in as you would draw a board, with a8 in the top left, so index 0 is a8. ChessML's squares count from a1 = 0. The two layouts differ only in the rank, so `sq lxor 56` (flip the rank bits, keep the file) converts one to the other. A White piece therefore reads `table.(sq lxor 56)`. A Black piece should see the table mirrored top to bottom, which happens to be exactly what you get by reading `table.(sq)` directly. This is `Piece_tables.piece_square_value`:
 
 ```ocaml
-(* Count material using bitboard population count *)
-let count_material pos color =
-  let pawns = Position.get_pieces pos color Pawn in
-  let knights = Position.get_pieces pos color Knight in
-  let bishops = Position.get_pieces pos color Bishop in
-  let rooks = Position.get_pieces pos color Rook in
-  let queens = Position.get_pieces pos color Queen in
-  (Bitboard.population pawns * 100) (* times by the centipawn valuation of the piece *)
-  + (Bitboard.population knights * 320)
-  + (Bitboard.population bishops * 330)
-  + (Bitboard.population rooks * 500)
-  + (Bitboard.population queens * 900)
+let piece_square_value (piece : piece) (sq : Square.t) : int =
+  (* Tables are a8-first, squares are a1-first: flip for White, Black reads it mirrored *)
+  let table_sq = if piece.color = White then sq lxor 56 else sq in
+  match piece.kind with
+  | Pawn -> pawn_table.(table_sq)
+  | Knight -> knight_table.(table_sq)
+  (* ... bishop, rook, queen ... *)
+  | King -> king_middlegame_table.(table_sq)
 ```
 
-**How it works:**
+A common way to mirror for Black is `63 - sq`. That flips the files too, which makes no difference while a table is the same on both wings, but turns an asymmetric table (a king that likes g1 more than b1, for example) into nonsense for one side.
 
-- `Position.get_pieces pos color Pawn` returns a bitboard (64-bit integer) with bits set for each pawn
-- `Bitboard.population` uses hardware `popcount` instruction to count set bits (see [bitboards](bitboards.md))
-- Multiply count by piece value and sum for total material
+## Tapered evaluation (not in ChessML)
 
-This gives you the baseline: "I have 2400 centipawns of material, opponent has 2100—I'm ahead by 3 pawns."
+A king should hide in the middlegame and walk to the center in the endgame, so one table cannot be right for both. The usual answer is to keep two scores, a middlegame one and an endgame one, and blend them by a game phase computed from the remaining non-pawn material: all middlegame at the start, all endgame when the pieces are gone, a weighted average in between.
 
-**Performance:** Bitboard approach is ~40x faster than iterating over all 64 squares. The `popcount` instruction executes in 1-3 CPU cycles.
+ChessML does not do this. It has a single `king_middlegame_table`, and its endgame knowledge comes from separate terms instead (below). Tapering is on my list.
 
-### 2. Piece-Square Tables (PST)
+## Pawn structure
 
-Not all squares are equal. A knight in the center is worth more than a knight on the rim. See [bitboards](bitboards.md) for efficient board representation.
+Pawns move slowly and cannot go back, so their weaknesses last. ChessML scores each pawn in `lib/engine/eval_pawn_structure.ml`:
+
+| Term | ChessML's rule | Score |
+| --- | --- | --- |
+| passed | no enemy pawn ahead on its own or adjacent files, and it is the frontmost friendly pawn on its file | by relative rank (0-based from its own side): 0, 0, 15, 30, 60, 150, 300; +20 more if supported |
+| doubled | more than one friendly pawn on the file | -20 per extra pawn, charged once per file |
+| isolated | no friendly pawn on either adjacent file | -20 |
+| backward | there are friendly pawns on adjacent files, but all of them are ahead of it (so none can defend it); not counted if isolated | -10 |
+| supported | a friendly pawn beside it or diagonally behind it | +5 |
+| central | on the d- or e-file | +5 |
+
+The list runs from relative rank 0 (its own back rank, where a pawn never stands) to 6 (the seventh rank). There is no entry for the last rank, because a pawn that gets there has already promoted.
+
+Many engines also call a pawn backward only when the square in front of it is attacked by an enemy pawn. ChessML does not check that, so it penalizes some pawns that could safely advance.
+
+Pawn structure depends only on where the pawns are, and the same pawn structure appears over and over in a search. So ChessML caches the result in `Pawn_cache`, keyed by both pawn bitboards (White's and Black's, compared exactly on a hit), and stores the score as White minus Black. `Eval` negates it when Black is to move.
+
+## King safety
+
+Real king safety looks at the pawn shield, open files near the king and enemy pieces aiming at it. ChessML's version (`lib/engine/eval_king_safety.ml`) is only about castling, and has no pawn shield term:
+
+- king on g1/c1 (g8/c8 for Black), counted as castled: +120
+- not castled, still has a castling right and the squares between king and rook on that side are empty: +80
+- has a right but the path is blocked: +30
+- lost all castling rights without castling: -60 while total material is above 6000, otherwise -20
+
+## Development
+
+For the first 15 moves (`Position.fullmove <= 15`), `Eval_pieces.evaluate_development` nudges the engine to get its pieces out:
+
+- -25 for each knight or bishop still on its starting square, +15 for each one that has left
+- -40 if the queen has left d1/d8 before two minor pieces are out
+- +40 if the two rooks are on the same rank with nothing between them
+- +5 for each piece (not pawn or king) that is defended
+
+There is also a bishop pair bonus of +50 in `Eval_pieces.evaluate_bishop_pair`.
+
+## Trade incentive
+
+When you are ahead, trading pieces makes the extra material count for more. An earlier version of these notes penalized the material difference itself, which does nothing for trades: the difference stays the same when equal pieces come off. What ChessML does is look at how many pieces are left:
 
 ```ocaml
-(* Knight table: center squares get big bonuses *)
-let knight_table = [|
-  -50; -40; -30; -30; -30; -30; -40; -50;  (* Rank 1: rim is bad *)
-  -40; -20;   0;   0;   0;   0; -20; -40;
-  -30;   0;  10;  15;  15;  10;   0; -30;
-  -30;   5;  15;  20;  20;  15;   5; -30;  (* Center is great *)
-  -30;   0;  15;  20;  20;  15;   0; -30;
-  -30;   5;  10;  15;  15;  10;   5; -30;
-  -40; -20;   0;   5;   5;   0; -20; -40;
-  -50; -40; -30; -30; -30; -30; -40; -50;  (* Rank 8: rim is bad *)
-|]
-
-let piece_square_value piece square =
-  let table = get_table_for_piece piece in
-  let sq_index =
-    if piece.color = White then square
-    else 63 - square  (* Flip for black *)
+(* from Eval.evaluate_position *)
+let trade_incentive =
+  let pieces =
+    Position.count_non_pawn_material pos side
+    + Position.count_non_pawn_material pos opponent
   in
-  table.(sq_index)
-```
-
-**Why flip for black?** Tables are from white's perspective. Black's 8th rank is like white's 1st rank.
-
-### 3. Total Evaluation
-
-```ocaml
-let evaluate pos =
-  let side = Position.side_to_move pos in
-  let opponent = Color.opponent side in
-
-  (* Material *)
-  let our_material = count_material pos side in
-  let their_material = count_material pos opponent in
-
-  (* Piece-square bonuses *)
-  let our_pst = sum_piece_square_bonuses pos side in
-  let their_pst = sum_piece_square_bonuses pos opponent in
-
-  (* Total score *)
-  (our_material + our_pst) - (their_material + their_pst)
-```
-
-This gives you a score from the side-to-move's perspective.
-
-## Advanced Evaluation Terms
-
-### Pawn Structure
-
-**Passed Pawns** (no enemy pawns can stop them):
-
-```ocaml
-let passed_pawn_bonus rank =
-  (* More valuable as they advance *)
-  match rank with
-  | 1 -> 0    (* On starting square *)
-  | 2 -> 10
-  | 3 -> 20
-  | 4 -> 40
-  | 5 -> 80
-  | 6 -> 120  (* Almost promoting! *)
-  | 7 -> 200  (* Unstoppable *)
-  | _ -> 0
-
-let is_passed_pawn pos color sq =
-  let file = sq mod 8 in
-  let rank = sq / 8 in
-  let opponent = Color.opponent color in
-
-  (* Check if any opponent pawns can stop it *)
-  let front_span = if color = White
-    then squares_ahead sq
-    else squares_behind sq in
-  let adjacent_files = [file - 1; file; file + 1] in
-
-  not (exists_enemy_pawn pos opponent front_span adjacent_files)
-```
-
-**Doubled Pawns** (two pawns same file, bad):
-
-```ocaml
-let doubled_pawn_penalty = -10 in
-
-let count_doubled_pawns pos color =
-  let doubled = ref 0 in
-  for file = 0 to 7 do
-    let pawns_on_file = count_pawns_on_file pos file color in
-    if pawns_on_file > 1 then
-      doubled := !doubled + (pawns_on_file - 1)
-  done;
-  !doubled * doubled_pawn_penalty
-```
-
-**Isolated Pawns** (no friendly pawns on adjacent files, bad):
-
-```ocaml
-let isolated_pawn_penalty = -20 in
-
-let is_isolated_pawn pos color sq =
-  let file = sq mod 8 in
-  let left_file = file - 1 in
-  let right_file = file + 1 in
-
-  (left_file < 0 || not (has_pawn_on_file pos color left_file)) &&
-  (right_file > 7 || not (has_pawn_on_file pos color right_file))
-```
-
-### King Safety
-
-**Castling Bonus** (castled king is safer):
-
-```ocaml
-let castling_bonus pos color =
-  let has_castled = Position.has_castled pos color in
-  if has_castled then 30 else 0
-
-let can_castle_bonus pos color =
-  let rights = Position.castling_rights pos color in
-  if rights.kingside || rights.queenside then 10 else 0
-```
-
-**Pawn Shield** (pawns in front of king):
-
-```ocaml
-let pawn_shield_bonus pos color king_sq =
-  let shield_squares = squares_in_front_of_king king_sq color in
-  let shield_pawns =
-    List.filter (has_pawn_on pos color) shield_squares in
-  List.length shield_pawns * 10
-```
-
-### Piece Development
-
-**Penalize unmoved pieces in opening:**
-
-```ocaml
-let development_penalty pos =
-  if Position.fullmove_number pos > 10 then 0  (* Past opening *)
-  else
-    let penalty = ref 0 in
-    (* Check if knights still on back rank *)
-    if has_piece_on pos White Knight 1 then penalty := !penalty - 20;
-    if has_piece_on pos White Knight 6 then penalty := !penalty - 20;
-    (* Check if bishops still on back rank *)
-    if has_piece_on pos White Bishop 2 then penalty := !penalty - 20;
-    if has_piece_on pos White Bishop 5 then penalty := !penalty - 20;
-    !penalty
-```
-
-### Mobility
-
-**Count number of legal moves** (more options = better):
-
-```ocaml
-let mobility_bonus pos color =
-  let move_count = List.length (Movegen.generate_moves pos) in
-  move_count * 2  (* 2 centipawns per legal move *)
-```
-
-**Note:** This is expensive to calculate, so many engines approximate it or skip it. See [move generation](bitboards.md) for implementation details.
-
-### Trade Incentives
-
-**When ahead, trade pieces (not pawns):**
-
-```ocaml
-let trade_bonus pos side =
-  let our_material = count_material pos side in
-  let their_material = count_material pos (Color.opponent side) in
-  let material_diff = our_material - their_material in
-
-  if material_diff > 0 then
-    (* Ahead: prefer fewer pieces *)
-    let our_pieces = count_non_pawn_pieces pos side in
-    let their_pieces = count_non_pawn_pieces pos (Color.opponent side) in
-    -10 * (our_pieces - their_pieces)  (* Negative = good when behind *)
-  else
-    0
-```
-
-### Piece-Specific Terms
-
-**Bishop pair bonus:**
-
-```ocaml
-let bishop_pair_bonus pos color =
-  let bishop_count = popcount (Position.get_pieces pos color Bishop) in
-  if bishop_count >= 2 then 50 else 0
-```
-
-**Rook on open file:**
-
-```ocaml
-let rook_open_file_bonus pos color rook_sq =
-  let file = rook_sq mod 8 in
-  let has_any_pawn =
-    has_pawn_on_file pos White file || has_pawn_on_file pos Black file in
-  if not has_any_pawn then 25  (* Open file *)
-  else if not (has_pawn_on_file pos color file) then 15  (* Semi-open *)
+  if material_diff > 200
+  then -(pieces * 5)
+  else if material_diff < -200
+  then pieces * 5
   else 0
+in
 ```
 
-## Complete Evaluation
+`count_non_pawn_material` counts knights, bishops, rooks and queens (pieces, not centipawns). The side more than two pawns ahead loses 5 for every piece still on the board, so each trade raises its score; the side behind gets the opposite.
 
-```ocaml
-let evaluate pos =
-  let side = Position.side_to_move pos in
-  let opponent = Color.opponent side in
+## Putting it together
 
-  (* Material *)
-  let material_us = count_material pos side in
-  let material_them = count_material pos opponent in
-  let material = material_us - material_them in
+`Eval.evaluate_position` adds up, each as "us minus them" from the side to move's view:
 
-  (* Piece-square tables *)
-  let pst_us = piece_square_bonus pos side in
-  let pst_them = piece_square_bonus pos opponent in
-  let positional = pst_us - pst_them in
+1. material
+2. piece-square tables
+3. pawn structure (cached)
+4. trade incentive
+5. king safety
+6. development
+7. bishop pair
+8. fifty-move incentive (when the halfmove clock is high, the side ahead is pushed to make progress)
+9. rook endgame (`Eval_endgame.evaluate_rook_endgame`: cutting off the enemy king, rook behind a passed pawn)
+10. ladder mate (`Eval_endgame.evaluate_ladder_mate`: two major pieces against a nearly bare king)
 
-  (* Pawn structure *)
-  let pawns_us = evaluate_pawns pos side in
-  let pawns_them = evaluate_pawns pos opponent in
-  let pawn_structure = pawns_us - pawns_them in
+`Eval.evaluate` wraps this and returns 0 first if `Position.has_insufficient_material`.
 
-  (* King safety *)
-  let king_us = evaluate_king_safety pos side in
-  let king_them = evaluate_king_safety pos opponent in
-  let king_safety = king_us - king_them in
+### Things ChessML does not have
 
-  (* Mobility (optional - expensive) *)
-  (* let mobility = calculate_mobility pos side - calculate_mobility pos opponent in *)
+Mobility (how many squares each piece can reach), rooks on open files, knight outposts and king tropism are standard in other engines and absent here. People report that mobility in particular matters a lot; I have not tried it in ChessML.
 
-  (* Total *)
-  material + positional + pawn_structure + king_safety
-```
+## Testing it
 
-## Tuning Evaluation
+Two tests I found worth having (`test/engine/test_eval.ml`):
 
-### Start Simple
+- **Color symmetry.** Flip the board vertically, swap the colors of all pieces, swap the side to move and the castling rights. Because the score is from the side to move's view, the flipped position must get the *same* score, not the negated one. `test_color_symmetry` checks this on a handful of FENs.
+- **Known positions.** The start position should be close to 0, a side a piece up clearly positive, bare kings exactly 0. `test_pst_orientation` pins a few table lookups down (a White pawn on e4 must score more than one on e2), which is the test that would have caught the orientation bug below.
 
-Begin with material + PST. Add terms one at a time, testing each:
+Whether a new term helps can only be found out with games. Small differences need many games: a 55% score over 200 games is still within the noise. How I run matches is in the [README](https://github.com/AlexanderBrevig/ChessML/blob/main/README.md#strength) and in [CLAUDE.md](https://github.com/AlexanderBrevig/ChessML/blob/main/CLAUDE.md).
 
-```ocaml
-(* Version 1: Material only *)
-let eval_v1 pos = count_material pos White - count_material pos Black
+## Pitfalls
 
-(* Version 2: + Piece-square tables *)
-let eval_v2 pos = eval_v1 pos + pst_diff pos
+- **Tables read upside down.** Tables typed a8-first but indexed a1-first make one or both colors read them upside down, with no crash and no failing test unless you test symmetry. ChessML had this bug: a pawn on e2 got the bonus meant for e7.
+- **Mirroring with `63 - sq`.** It also swaps the files, which breaks every table that is not symmetric left to right.
+- **Wrong perspective.** Mixing "White minus Black" and "side to move" scores, for example caching one and returning it as the other, gives a score with the wrong sign half of the time.
+- **A cache keyed on too little.** The pawn cache must be keyed on everything the cached value depends on. A key built by XOR-ing the two pawn bitboards maps a structure and its color swap to the same entry; ChessML had that bug and now compares both bitboards.
+- **Doing the search's work in the evaluation.** ChessML once subtracted the value of every attacked piece. That duplicated quiescence search, was wrong for the side to move (it can simply move the piece away), and the inflated static scores let pruning cut real tactics. It was removed.
 
-(* Version 3: + Pawn structure *)
-let eval_v3 pos = eval_v2 pos + pawn_structure_diff pos
-```
+## Sources
 
-### Test Each Addition
-
-Run matches to measure Elo gain:
-
-```bash
-cutechess-cli \
-  -engine name=V1 cmd=engine_v1 \
-  -engine name=V2 cmd=engine_v2 \
-  -rounds 100 \
-  -games 2
-```
-
-If V2 wins 55-60%, it's ~+35-70 Elo improvement. Keep it.
-
-### Avoid Over-Tuning
-
-Don't add every possible term. Each term:
-
-- Makes evaluation slower
-- Might not help (or hurt!) if poorly calibrated
-
-**Good rule:** Each term should gain 10+ Elo or don't include it.
-
-## Common Pitfalls
-
-### 1. Forgetting Perspective
-
-```ocaml
-(* Wrong: Always returns from white's perspective *)
-let eval pos =
-  count_material pos White - count_material pos Black
-
-(* Correct: Returns from side-to-move perspective *)
-let eval pos =
-  let side = Position.side_to_move pos in
-  let us = count_material pos side in
-  let them = count_material pos (Color.opponent side) in
-  us - them
-```
-
-### 2. Expensive Mobility
-
-```ocaml
-(* Wrong: Generates moves twice! *)
-let eval pos =
-  let our_mobility = List.length (Movegen.generate_moves pos) in
-  let new_pos = switch_sides pos in
-  let their_mobility = List.length (Movegen.generate_moves new_pos) in
-  ...
-```
-
-This doubles evaluation time! Either skip mobility or approximate it.
-
-### 3. Ignoring Game Phase
-
-```ocaml
-(* Wrong: Same evaluation opening and endgame *)
-let eval pos = material + king_safety
-
-(* Correct: Different emphasis by phase *)
-let eval pos =
-  let phase = game_phase pos in
-  if phase = Opening then
-    material + development + king_safety
-  else if phase = Endgame then
-    material + king_activity + pawn_advancement
-  else
-    material + pst + king_safety
-```
-
-## Evaluation Debugging
-
-### Test Positions
-
-```ocaml
-(* Should be ~+100 (pawn advantage) *)
-let test1 = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPP1/RNBQKBNR w KQkq - 0 1"
-
-(* Should be ~+900 (queen advantage) *)
-let test2 = "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-
-(* Should be ~0 (equal) *)
-let test3 = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-```
-
-### Sanity Checks
-
-```ocaml
-(* Evaluation should never be crazy *)
-assert (abs (evaluate pos) < 50000);  (* Unless it's mate *)
-
-(* Should be symmetric *)
-assert (evaluate pos = -(evaluate (flip_position pos)));
-
-(* Material count should match *)
-let mat = count_material pos White + count_material pos Black in
-assert (mat >= 0 && mat <= 7800);  (* Max material ~78 points *)
-```
-
-## Further Reading
-
-- [Piece-Square Tables](https://www.chessprogramming.org/Piece-Square_Tables)
-- [Pawn Structure](https://www.chessprogramming.org/Pawn_Structure)
-- [King Safety](https://www.chessprogramming.org/King_Safety)
-- [Tuning](https://www.chessprogramming.org/Automated_Tuning)
-- `lib/engine/eval.ml` - See complete implementation
+- [Chess Programming Wiki: Evaluation](https://www.chessprogramming.org/Evaluation)
+- [Chess Programming Wiki: Piece-Square Tables](https://www.chessprogramming.org/Piece-Square_Tables)
+- [Chess Programming Wiki: Pawn Structure](https://www.chessprogramming.org/Pawn_Structure)
+- [Chess Programming Wiki: Tapered Eval](https://www.chessprogramming.org/Tapered_Eval)
+- ChessML's code: `lib/engine/eval.ml`, `eval_pawn_structure.ml`, `eval_pieces.ml`, `eval_king_safety.ml`, `eval_endgame.ml`, `piece_tables.ml`, `pawn_cache.ml`
