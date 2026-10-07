@@ -33,16 +33,8 @@ let count_pawns_on_file = Eval_pawn_structure.count_pawns_on_file
 let evaluate_pawn_structure = Eval_pawn_structure.evaluate_pawn_structure
 
 (* Re-export piece functions for backward compatibility *)
-let is_square_attacked = Eval_pieces.is_square_attacked
 let is_piece_hanging = Eval_pieces.is_piece_hanging
-let is_piece_en_prise pos sq = Eval_pieces.is_piece_en_prise pos sq piece_kind_value
-
-let evaluate_piece_threats pos sq =
-  Eval_pieces.evaluate_piece_threats pos sq piece_kind_value
-;;
-
 let evaluate_bishop_pair = Eval_pieces.evaluate_bishop_pair
-let evaluate_piece_safety = Eval_pieces.evaluate_piece_safety
 let evaluate_development = Eval_pieces.evaluate_development
 
 (* Re-export endgame functions for backward compatibility *)
@@ -132,12 +124,6 @@ let evaluate_position ~history (pos : Position.t) : int =
     let their_bishops = evaluate_bishop_pair pos opponent in
     our_bishops - their_bishops
   in
-  (* Piece safety - penalize hanging/threatened pieces *)
-  let safety_bonus =
-    let our_safety = evaluate_piece_safety pos side in
-    let their_safety = evaluate_piece_safety pos opponent in
-    our_safety - their_safety
-  in
   (* Repetition incentive - avoid when winning, seek when losing *)
   let repetition_incentive = evaluate_repetition_incentive pos history material_diff in
   (* 50-move rule incentive - avoid draws when winning *)
@@ -162,7 +148,6 @@ let evaluate_position ~history (pos : Position.t) : int =
   + king_safety_bonus
   + development_bonus
   + bishop_pair_bonus
-  + safety_bonus
   + repetition_incentive
   + fifty_move_incentive
   + rook_endgame_bonus

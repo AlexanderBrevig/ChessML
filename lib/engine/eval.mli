@@ -34,15 +34,6 @@ val piece_kind_total_value : Types.piece_kind -> Types.color -> Square.t -> int
     Returns true if the piece can be captured with material gain. *)
 val is_piece_hanging : Position.t -> Square.t -> bool
 
-(** Check if a piece is en prise (can be captured immediately with material gain).
-    Similar to is_piece_hanging but focuses on immediate captures. *)
-val is_piece_en_prise : Position.t -> Square.t -> bool
-
-(** Evaluate threats to a specific piece on a square.
-    Returns negative value if piece is under threat (more negative = worse).
-    Returns 0 if piece is safe. *)
-val evaluate_piece_threats : Position.t -> Square.t -> int
-
 (** Evaluate 50-move rule incentive/penalty.
     Returns negative penalty when approaching 50-move draw while winning.
     Scaled by material advantage - larger advantage = larger penalty to encourage progress.
