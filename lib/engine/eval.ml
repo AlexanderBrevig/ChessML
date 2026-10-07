@@ -95,9 +95,8 @@ let evaluate ?(history = []) (pos : Position.t) : int =
   let total_material = our_material + their_material in
   (* Evaluate pawn structure *)
   let pawn_structure_bonus =
-    let our_pawn_eval = evaluate_pawn_structure pos side in
-    let their_pawn_eval = evaluate_pawn_structure pos opponent in
-    our_pawn_eval - their_pawn_eval
+    let white_minus_black = evaluate_pawn_structure pos in
+    if side = White then white_minus_black else -white_minus_black
   in
   (* Trade incentive - use already collected piece counts *)
   let trade_incentive =

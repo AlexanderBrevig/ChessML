@@ -206,21 +206,17 @@ let evaluate_pawn_structure_inner (pos : Position.t) (color : color) : int =
   !bonus
 ;;
 
-(** Evaluate pawn structure for a given color with caching *)
-let evaluate_pawn_structure (pos : Position.t) (color : color) : int =
+(** Evaluate pawn structure from White's perspective (white minus black), cached *)
+let evaluate_pawn_structure (pos : Position.t) : int =
   let white_pawns = Position.get_pieces pos White Pawn in
   let black_pawns = Position.get_pieces pos Black Pawn in
-  let pawn_hash = Pawn_cache.compute_pawn_hash white_pawns black_pawns in
   let cache = Pawn_cache.get_global () in
-  match Pawn_cache.probe cache pawn_hash with
-  | Some score ->
-    (* Cache hit - return stored score adjusted for color *)
-    if color = White then score else -score
+  match Pawn_cache.probe cache ~white_pawns ~black_pawns with
+  | Some score -> score
   | None ->
-    (* Cache miss - compute score for both colors and cache *)
-    let white_score = evaluate_pawn_structure_inner pos White in
-    let black_score = evaluate_pawn_structure_inner pos Black in
-    let combined_score = white_score - black_score in
-    Pawn_cache.store cache pawn_hash combined_score;
-    if color = White then white_score else black_score
+    let score =
+      evaluate_pawn_structure_inner pos White - evaluate_pawn_structure_inner pos Black
+    in
+    Pawn_cache.store cache ~white_pawns ~black_pawns score;
+    score
 ;;
