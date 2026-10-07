@@ -61,19 +61,19 @@ type search_result =
   ; pv : Move.t list (** principal variation starting with [best_move] *)
   }
 
-(** Ask a running search to stop as soon as possible (safe from another thread) *)
-val request_stop : unit -> unit
-
 (** Find the best move with iterative deepening up to [depth] plies (capped by
     [Config.get_max_search_depth]).
     @param verbose print per-iteration statistics to stderr (default true)
     @param max_time_ms hard time limit; no new iteration starts after half of it
     @param state tables to use (default {!default_state})
+    @param stop setting this flag (e.g. from another thread) ends the search after
+           the first iteration
     @param on_iteration called with the result of every completed iteration *)
 val find_best_move
   :  ?verbose:bool
   -> ?max_time_ms:int
   -> ?state:state
+  -> ?stop:bool Atomic.t
   -> ?on_iteration:(search_result -> unit)
   -> Game.t
   -> int

@@ -98,16 +98,12 @@ type search_result =
   ; pv : Move.t list
   }
 
-let stop_requested = Atomic.make false
-
-(** Ask a running search to stop as soon as possible (thread safe) *)
-let request_stop () = Atomic.set stop_requested true
-
 exception Stop
 
 (** Per-search context *)
 type ctx =
   { st : state
+  ; stop : bool Atomic.t (** set by another thread to stop the search *)
   ; mutable nodes : int
   ; deadline : float option
   ; mutable can_stop : bool (** false until one iteration has completed *)
@@ -121,7 +117,7 @@ let poll ctx =
   if ctx.can_stop && ctx.nodes land 2047 = 0
   then
     if
-      Atomic.get stop_requested
+      Atomic.get ctx.stop
       ||
       match ctx.deadline with
       | Some d -> Unix.gettimeofday () > d
@@ -460,17 +456,18 @@ let find_best_move
       ?(verbose = true)
       ?max_time_ms
       ?(state = default_state)
+      ?(stop = Atomic.make false)
       ?(on_iteration = fun (_ : search_result) -> ())
       (game : Game.t)
       (depth : int)
   : search_result
   =
-  Atomic.set stop_requested false;
   let pos = Game.position game in
   let start = Unix.gettimeofday () in
   let history = Array.of_list (List.rev (Game.history game)) in
   let ctx =
     { st = state
+    ; stop
     ; nodes = 0
     ; deadline = Option.map (fun ms -> start +. (float_of_int ms /. 1000.0)) max_time_ms
     ; can_stop = false
@@ -488,7 +485,7 @@ let find_best_move
     | None -> false
   in
   let rec iterate d best =
-    if d > max_depth || (d > 1 && half_time_passed ())
+    if d > max_depth || (d > 1 && (half_time_passed () || Atomic.get ctx.stop))
     then best
     else (
       match

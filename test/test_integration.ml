@@ -215,17 +215,9 @@ let test_threefold_repetition () =
   let game = Game.make_move game mv2 in
   let game = Game.make_move game mv3 in
   let game = Game.make_move game mv4 in
+  (* The start position has now occurred three times: plies 0, 4 and 8 *)
   Alcotest.(check bool)
-    "After 2nd cycle, not threefold yet"
-    false
-    (Game.is_threefold_repetition game);
-  (* Repeat once more *)
-  let game = Game.make_move game mv1 in
-  let game = Game.make_move game mv2 in
-  let game = Game.make_move game mv3 in
-  let game = Game.make_move game mv4 in
-  Alcotest.(check bool)
-    "After 3rd cycle, threefold repetition"
+    "After 2nd cycle, threefold repetition"
     true
     (Game.is_threefold_repetition game)
 ;;

@@ -3,5 +3,5 @@
  (public_name chessml.protocols)
  (flags
   (:standard -w -32-69))
- (libraries chessml.core chessml.engine unix)
- (modules xboard uci))
+ (libraries chessml.core chessml.engine unix threads.posix)
+ (modules protocol_common xboard uci))
