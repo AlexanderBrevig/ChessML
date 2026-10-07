@@ -342,7 +342,9 @@ let make_move pos mv =
     in
     (* Update move counters *)
     let new_side = Color.opponent pos.side_to_move in
-    let new_halfmove = pos.halfmove + 1 in
+    let new_halfmove =
+      if p.kind = Pawn || Move.is_capture mv then 0 else pos.halfmove + 1
+    in
     let new_fullmove = if new_side = White then pos.fullmove + 1 else pos.fullmove in
     (* Update king positions if king moved *)
     let new_white_king =
@@ -513,7 +515,7 @@ let of_fen fen =
     |]
   in
   (* Parse en passant square *)
-  let ep_str = List.nth parts 3 in
+  let ep_str = if List.length parts > 3 then List.nth parts 3 else "-" in
   let ep_square = if ep_str = "-" then None else Some (Square.of_uci ep_str) in
   (* Parse halfmove and fullmove *)
   let halfmove = if List.length parts > 4 then int_of_string (List.nth parts 4) else 0 in
@@ -600,10 +602,19 @@ let to_fen pos =
     String.concat "/" (Array.to_list ranks)
   in
   let side_char = if pos.side_to_move = White then "w" else "b" in
-  (* Simplified castling rights for now *)
-  let castling_str = "KQkq" in
-  (* Simplified en passant *)
-  let ep_str = "-" in
+  let castling_str =
+    let w = pos.castling_rights.(0)
+    and b = pos.castling_rights.(1) in
+    let flag opt c = if Option.is_some opt then c else "" in
+    match flag w.short "K" ^ flag w.long "Q" ^ flag b.short "k" ^ flag b.long "q" with
+    | "" -> "-"
+    | s -> s
+  in
+  let ep_str =
+    match pos.ep_square with
+    | Some sq -> Square.to_uci sq
+    | None -> "-"
+  in
   Printf.sprintf
     "%s %s %s %s %d %d"
     board_str
