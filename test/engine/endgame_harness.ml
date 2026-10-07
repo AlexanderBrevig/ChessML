@@ -66,7 +66,7 @@ let random_position rng white_pieces =
   attempt ()
 ;;
 
-let play ?(depth = 5) ?(max_plies = 120) fen =
+let play ?(depth = 5) ?max_time_ms ?(max_plies = 120) fen =
   let rec go game plies =
     let pos = Game.position game in
     if Game.legal_moves game = []
@@ -76,7 +76,7 @@ let play ?(depth = 5) ?(max_plies = 120) fen =
     else if plies >= max_plies
     then Timeout
     else (
-      match (Search.find_best_move ~verbose:false game depth).best_move with
+      match (Search.find_best_move ~verbose:false ?max_time_ms game depth).best_move with
       | Some mv -> go (Game.make_move game mv) (plies + 1)
       | None -> Timeout)
   in
@@ -86,10 +86,11 @@ let play ?(depth = 5) ?(max_plies = 120) fen =
 
 (** Play [n] random positions; returns (mates, stalemates, draws, timeouts,
     average plies to mate) *)
-let run ?depth ?max_plies ~seed ~n white_pieces =
+let run ?depth ?max_time_ms ?max_plies ~seed ~n white_pieces =
   let rng = Random.State.make [| seed |] in
   let results =
-    List.init n (fun _ -> play ?depth ?max_plies (random_position rng white_pieces))
+    List.init n (fun _ ->
+      play ?depth ?max_time_ms ?max_plies (random_position rng white_pieces))
   in
   let count p = List.length (List.filter p results) in
   let mate_plies =

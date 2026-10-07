@@ -54,6 +54,11 @@ let () =
         ; Alcotest.test_case "K+R vs K" `Quick (fun () ->
             check_mates "KRK" [ 'R' ] ~n:10 ~depth:4 ~max_plies:80)
         ] )
+    ; ( "bishop and knight"
+      , [ Alcotest.test_case "K+B+N vs K" `Quick (fun () ->
+            (* the hardest basic mate: depth 7 and the fifty-move limit *)
+            check_mates "KBNK" [ 'B'; 'N' ] ~n:4 ~depth:7 ~max_plies:100)
+        ] )
     ; ( "king and pawn"
       , [ Alcotest.test_case "KPK table" `Quick test_kpk_table
         ; Alcotest.test_case "Converts won K+P vs K" `Quick test_kpk_conversion

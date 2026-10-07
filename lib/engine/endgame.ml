@@ -9,6 +9,8 @@
       edge and bring the attacking king close.
     - King and pawn against king: exact result from the {!Kpk} table; a won
       position also rewards pushing the pawn.
+    - King, bishop and knight against king: mate is only possible in a corner of
+      the bishop's color, so drive the king towards one of those two corners.
 *)
 
 open Chessml_core
@@ -52,6 +54,34 @@ let kxk pos ~strong =
   + push_close (king_square pos strong) weak_king
 ;;
 
+(** King, bishop and knight against king: score for [strong]. The defending king
+    has to be driven into a corner the bishop can reach: a1/h8 for a dark-squared
+    bishop, a8/h1 for a light-squared one. *)
+let kbnk pos ~strong =
+  let weak = Color.opponent strong in
+  let weak_king = king_square pos weak in
+  let light_bishop =
+    Int64.logand (Position.get_pieces pos strong Bishop) Bitboard.light_squares <> 0L
+  in
+  let corners =
+    if light_bishop then [ Square.a8; Square.h1 ] else [ Square.a1; Square.h8 ]
+  in
+  (* Files plus ranks to the nearer right corner (0-14). Every step along the edge
+     from a wrong corner towards a right one shortens it, so driving the king
+     there always shows progress. It must dominate the other terms. *)
+  let corner_distance =
+    List.fold_left
+      (fun d c ->
+         min d (abs ((weak_king mod 8) - (c mod 8)) + abs ((weak_king / 8) - (c / 8))))
+      14
+      corners
+  in
+  known_win
+  + Position.material pos strong
+  + (100 * (14 - corner_distance))
+  + push_close (king_square pos strong) weak_king
+;;
+
 (** King and pawn against king: score for [strong] *)
 let kpk pos ~strong =
   let weak = Color.opponent strong in
@@ -92,6 +122,11 @@ let evaluate pos =
       non_king_pieces pos strong = Position.get_pieces pos strong Pawn
       && count pos strong Pawn = 1
     then Some (from_side_to_move strong (kpk pos ~strong))
+    else if
+      count pos strong Bishop = 1
+      && count pos strong Knight = 1
+      && Bitboard.population (non_king_pieces pos strong) = 2
+    then Some (from_side_to_move strong (kbnk pos ~strong))
     else None
   | None -> None
 ;;
