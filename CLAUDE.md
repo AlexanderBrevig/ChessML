@@ -8,7 +8,9 @@ ChessML is a personal-learning bitboard chess engine in OCaml (>= 5.3) with UCI 
 
 ## Commands
 
-`just` wraps dune (`just list` for all recipes).
+`just` wraps dune (`just list` for all recipes). On this machine there is no opam switch; run commands inside
+`nix-shell -p ocamlPackages.ocaml dune_3 ocamlPackages.findlib ocamlPackages.alcotest ocamlPackages.domainslib ocaml-ng.ocamlPackages_5_3.ocamlformat_0_27_0 --run "<cmd>"`
+(ocamlformat 0.27.0 is marked broken in the default package set, hence the 5.3 one).
 
 ```bash
 dune build                          # debug build (also: just)
@@ -52,7 +54,8 @@ Key engine pieces and how they connect:
 - **`Search`**: iterative-deepening PVS + quiescence. All tables (TT, killers by ply, history, countermoves) live in `Search.state` (`default_state` for the protocols; `new_game`, `set_hash_size_mb`). Repetition/50-move/insufficient-material draws are detected in the tree. `find_best_move` takes `?max_time_ms`, `?stop` (an `Atomic` flag another thread may set) and `?on_iteration`. Pruning margins, LMR table and move ordering live in `Search_common`.
 - **`Score`**: mate scores encode distance (`mated_in ply`, `to_tt`/`of_tt` for TT storage, `to_uci`). Never hard-code mate values.
 - **`Config`** is a global ref of search options set via `Protocol_common.set_option` (UCI `setoption`, XBoard `option`). Tests that change it should call `Config.reset_to_defaults`.
-- **Opening book**: real Polyglot format (`Polyglot` encodes moves per spec, castling as king-takes-rook; keys sorted unsigned), read by `Opening_book`; `bin/create_book.ml` builds `book.bin` from PGN via `Pgn_parser` (uses `domainslib`). Book paths: `Config.get_book_paths`. `book.bin` is not committed.
+- **Opening book**: real Polyglot format (`Polyglot` encodes moves per spec, castling as king-takes-rook; keys sorted unsigned), read by `Opening_book`. Book paths: `Config.get_book_paths`. `book.bin` is not committed.
+- **Building the book**: `fish scripts/download_openings.fish` fetches the pgnmentor collection into `openings/` (3.5 GB, gitignored); `CHESSML_PARALLEL=12 ./_build/default/bin/create_book.exe` (release build) counts the first 20 plies of every game via `Pgn_parser` (`domainslib` workers, merged in memory) and writes `book.bin`. A move is kept if it was played in at least 3 games and at least 5% of the games reaching that position; weights are linear in the game count, relative to the most played move of the same position (log weights made fringe openings like 1.b4 far too common, and lost 23-42 head to head).
 - **UCI** runs the search on a `Thread` so `stop`/`isready` work mid-search; XBoard thinks synchronously.
 
 ## Other directories
@@ -60,3 +63,7 @@ Key engine pieces and how they connect:
 - `examples/`: benchmarks, demos and book tools (each declared in `examples/dune`).
 - `docs/` + `index.md`, `_config.yml`, `_sass`, `Gemfile`: Jekyll site of chess-programming articles deployed to GitHub Pages on push to `main` (`.github/workflows/deploy-docs.yml`).
 - `scripts/*.fish`: helper scripts for downloading openings and running cutechess-cli Elo matches against Stockfish.
+
+## Measuring strength
+
+Engine changes should be checked with games, not only tests. `cutechess-cli` and `stockfish` are not installed globally here; use `nix-shell -p cutechess stockfish`. Compare a change head to head against the previous binary (100+ games at 10s+0.1s), or run a gauntlet against Stockfish with `option.UCI_LimitStrength=true option.UCI_Elo=<1600|1900|2200>` (see README "Strength"; current estimate ~1850-2000). Twenty games per level is about +-170 Elo of noise.
