@@ -3,10 +3,10 @@ open Chessml
 (* Demonstrate the history heuristic improving move ordering over multiple searches *)
 
 let print_search_result result =
-  let total_moves, total_score, avg_score = History.get_stats () in
+  let total_moves, total_score, avg_score = History.stats Search.default_state.history in
   Printf.printf "Nodes: %Ld, Depth: %d\n" result.Search.nodes result.Search.depth;
   Printf.printf
-    "History stats - Tracked moves: %d, Total score: %d, Avg: %.1f\n\n"
+    "History stats - Tracked moves: %d, Max score: %d, Avg: %.1f\n\n"
     total_moves
     total_score
     avg_score
@@ -24,7 +24,7 @@ let () =
   in
   Printf.printf "Position: Italian Game opening\n\n";
   (* First search - fresh history table *)
-  History.clear ();
+  Search.new_game ();
   Printf.printf "Search 1 (depth 4, empty history):\n";
   let result1 = Search.find_best_move ~verbose:false game 4 in
   (match result1.Search.best_move with

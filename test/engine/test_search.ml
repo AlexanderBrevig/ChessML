@@ -207,7 +207,7 @@ let test_mate_in_one () =
   Alcotest.(check string) "UCI score" "mate 1" (Score.to_uci result.score)
 ;;
 
-let _test_mate_in_two () =
+let test_mate_in_two () =
   (* 1.Ra6! bxa6 2.b7# *)
   let game = Game.of_fen "kbK5/pp6/1P6/8/8/8/8/R7 w - - 0 1" in
   let result = Search.find_best_move ~verbose:false game 5 in
@@ -255,6 +255,7 @@ let () =
         ] )
     ; ( "mate"
       , [ test_case "Mate in one" `Quick test_mate_in_one
+        ; test_case "Mate in two" `Quick test_mate_in_two
         ; test_case "Mated side" `Quick test_mated_side_score
         ; test_case "Score TT round trip" `Quick test_score_tt_roundtrip
         ] )

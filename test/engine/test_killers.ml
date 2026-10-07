@@ -97,33 +97,6 @@ let test_killer_duplicate_prevention () =
   Alcotest.(check int) "Only one instance of duplicate killer" 1 (List.length killers)
 ;;
 
-let test_global_killer_operations () =
-  let move1 = Move.make (Square.of_uci "e2") (Square.of_uci "e4") Move.Quiet in
-  let move2 = Move.make (Square.of_uci "d2") (Square.of_uci "d4") Move.Quiet in
-  (* Clear global table *)
-  Killers.clear_global ();
-  (* Store global killers *)
-  Killers.store_global_killer 0 move1;
-  Killers.store_global_killer 1 move2;
-  (* Check global operations *)
-  Alcotest.(check bool)
-    "Move1 is global killer at depth 0"
-    true
-    (Killers.is_global_killer 0 move1);
-  Alcotest.(check bool)
-    "Move2 is global killer at depth 1"
-    true
-    (Killers.is_global_killer 1 move2);
-  Alcotest.(check bool)
-    "Move1 is not global killer at depth 1"
-    false
-    (Killers.is_global_killer 1 move1);
-  let global_killers_0 = Killers.get_global_killers 0 in
-  let global_killers_1 = Killers.get_global_killers 1 in
-  Alcotest.(check int) "One killer at depth 0" 1 (List.length global_killers_0);
-  Alcotest.(check int) "One killer at depth 1" 1 (List.length global_killers_1)
-;;
-
 let test_search_with_killers_performance () =
   (* Test a position where killers should help reduce nodes *)
   let game =
@@ -146,14 +119,13 @@ let test_search_with_killers_performance () =
 let test_killer_integration_with_search () =
   (* Test that killers are actually stored during search *)
   let game = Game.default () in
-  (* Clear global killers *)
-  Killers.clear_global ();
+  let state = Search.create_state ~hash_mb:1 () in
   (* Perform a search that should generate some killers *)
-  let _result = Search.find_best_move ~verbose:false game 3 in
-  (* Check if any killers were stored (depth 0, 1, 2 should have some activity) *)
-  let killers_depth_0 = Killers.get_global_killers 0 in
-  let killers_depth_1 = Killers.get_global_killers 1 in
-  let killers_depth_2 = Killers.get_global_killers 2 in
+  let _result = Search.find_best_move ~verbose:false ~state game 4 in
+  (* Check if any killers were stored at plies 0-2 *)
+  let killers_depth_0 = Killers.get_killers state.killers 0 in
+  let killers_depth_1 = Killers.get_killers state.killers 1 in
+  let killers_depth_2 = Killers.get_killers state.killers 2 in
   let total_killers =
     List.length killers_depth_0
     + List.length killers_depth_1
@@ -191,9 +163,8 @@ let () =
         ; test_case "Table clearing" `Quick test_killer_table_clear
         ; test_case "Duplicate prevention" `Quick test_killer_duplicate_prevention
         ] )
-    ; ( "global_operations"
-      , [ test_case "Global killer operations" `Quick test_global_killer_operations
-        ; test_case "Search integration" `Quick test_killer_integration_with_search
+    ; ( "search"
+      , [ test_case "Search integration" `Quick test_killer_integration_with_search
         ; test_case "Bounds safety" `Quick test_killer_bounds_safety
         ] )
     ; ( "performance"

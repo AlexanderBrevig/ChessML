@@ -123,32 +123,35 @@ let test_rook_pawn_endgame_promotion_plan () =
      This is a winning position - White should be able to force mate within 25 moves *)
   let starting_fen = "2R4k/8/8/8/3P4/8/8/K7 b - - 0 1" in
   let game = Game.of_fen starting_fen in
-  
   (* Play out the game automatically for up to 25 moves *)
   let rec play_game current_game move_count max_moves =
-    if move_count >= max_moves then
+    if move_count >= max_moves
+    then
       Alcotest.fail (Printf.sprintf "White should have mated within %d moves" max_moves)
     else (
       let pos = Game.position current_game in
       let legal_moves = Movegen.generate_moves pos in
-      if List.length legal_moves = 0 then (
+      if List.length legal_moves = 0
+      then (
         (* No legal moves - check if it's checkmate *)
         let side_to_move = Position.side_to_move pos in
-        let king_sq = if side_to_move = White 
-          then Position.white_king_sq pos 
-          else Position.black_king_sq pos in
+        let king_sq =
+          if side_to_move = White
+          then Position.white_king_sq pos
+          else Position.black_king_sq pos
+        in
         let opponent = Types.Color.opponent side_to_move in
         let attackers = Movegen.compute_attackers_to pos king_sq opponent in
-        if Bitboard.is_not_empty attackers then (
-          (* King is in check and no legal moves = checkmate *)
-          if side_to_move = Black then
-            current_game (* Black is mated - success! *)
-          else
-            Alcotest.fail "Expected Black to be mated, not White"
-        ) else
-          Alcotest.fail "Rook+pawn vs lone king should not be stalemate"
-      ) else if Game.is_draw current_game then
-        Alcotest.fail "Rook+pawn vs lone king should not be a draw"
+        if Bitboard.is_not_empty attackers
+        then
+          if
+            (* King is in check and no legal moves = checkmate *)
+            side_to_move = Black
+          then current_game (* Black is mated - success! *)
+          else Alcotest.fail "Expected Black to be mated, not White"
+        else Alcotest.fail "Rook+pawn vs lone king should not be stalemate")
+      else if Game.is_draw current_game
+      then Alcotest.fail "Rook+pawn vs lone king should not be a draw"
       else (
         (* Find and make the best move *)
         let result = Search.find_best_move ~verbose:false current_game 8 in
@@ -157,11 +160,8 @@ let test_rook_pawn_endgame_promotion_plan () =
           Alcotest.fail (Printf.sprintf "No legal move found at move %d" move_count)
         | Some mv ->
           let new_game = Game.make_move current_game mv in
-          play_game new_game (move_count + 1) max_moves
-      )
-    )
+          play_game new_game (move_count + 1) max_moves))
   in
-  
   let _final_game = play_game game 1 22 in
   ()
 ;;

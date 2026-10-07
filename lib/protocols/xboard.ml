@@ -187,6 +187,7 @@ let main_loop () =
         flush stdout
       | "new" :: _ ->
         (* Start new game *)
+        Search.new_game ();
         game := Game.default ();
         force_mode := false;
         ()

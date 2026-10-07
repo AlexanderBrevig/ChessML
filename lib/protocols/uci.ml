@@ -102,10 +102,8 @@ let parse_setoption (tokens : string list) : unit =
      | "hash" ->
        (try
           let size_mb = int_of_string value in
-          let size_entries = size_mb * 1024 * 1024 / 24 in
-          (* Rough estimate *)
-          Config.set_transposition_table_size size_entries;
-          Printf.eprintf "Set Hash to %d MB (%d entries)\n" size_mb size_entries;
+          Search.set_hash_size_mb size_mb;
+          Printf.eprintf "Set Hash to %d MB\n" size_mb;
           flush stderr
         with
         | _ ->
@@ -286,7 +284,9 @@ let main_loop () =
         | "register" :: _ ->
           (* No registration needed *)
           ()
-        | "ucinewgame" :: _ -> game := Game.default ()
+        | "ucinewgame" :: _ ->
+          Search.new_game ();
+          game := Game.default ()
         | "position" :: rest -> game := parse_position rest !game
         | "go" :: params ->
           let search_params = parse_go_params params in
@@ -308,6 +308,7 @@ let main_loop () =
               ; (* Book moves don't have scores *)
                 depth = 0
               ; nodes = Int64.zero
+              ; pv = [ mv ]
               }
             | None ->
               (* No book move, search normally *)
