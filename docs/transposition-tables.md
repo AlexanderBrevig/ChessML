@@ -348,4 +348,4 @@ The sweet spot for most engines is 64-256 MB.
 - [Zobrist Hashing](zobrist-hashing.md) - How to hash positions
 - [Alpha-Beta Pruning](alpha-beta-pruning.md) - The search algorithm
 - [Chess Programming Wiki - Transposition Table](https://www.chessprogramming.org/Transposition_Table)
-- `lib/engine/concurrent_tt.ml` - Thread-safe implementation
+- `lib/engine/search.ml` - The `TranspositionTable` module and mate score handling (`lib/engine/score.ml`)

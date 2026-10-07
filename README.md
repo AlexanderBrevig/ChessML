@@ -69,6 +69,8 @@ dune build --profile=release
 dune build --profile=release && CHESSML_PARALLEL=8 ./_build/default/bin/create_book.exe # about 8 minutes
 ```
 
+The book uses the standard Polyglot format, so third-party Polyglot `.bin` books work too. Books built by versions before the switch to Polyglot keys must be regenerated.
+
 You should the see something like
 
 ```
@@ -112,10 +114,10 @@ ChessML uses [Just](https://github.com/casey/just) as a command runner see `just
 # Build the project
 just
 
-# Run all tests (includes quick search tests ~11s)
+# Run all tests (a few seconds)
 just test
 
-# Run deep search validation (~2+ minutes)
+# Run the search tests including the slow cases
 just test-search
 
 # Format code
@@ -136,7 +138,7 @@ dune build
 # Release build (optimized - use for performance testing!)
 dune build --profile=release
 
-# Run all tests (quick by default ~11s)
+# Run all tests
 dune runtest
 
 # Run quick search tests only
@@ -207,14 +209,16 @@ ChessML uses a comprehensive test suite with both quick and thorough validation:
 - **Core Tests**: Data structures, move generation, position handling
 - **Engine Tests**: Evaluation, game logic, zobrist hashing
 - **Search Tests**:
-  - **Quick** (~10s): Basic functionality, shallow search validation
-  - **Slow** (~2+ min): Deep search validation, performance analysis
+  - **Quick**: mates, tactics, search behavior (run by `dune runtest`)
+  - **Slow**: deeper searches (`just test-search`)
+- **Perft**: move generation against published node counts
+- **Protocol Tests**: UCI and XBoard sessions driven line by line
 - **Integration Tests**: End-to-end functionality
 
 ### Running Tests
 
 ```bash
-# Quick development feedback (~11s total)
+# Quick development feedback (a few seconds)
 dune runtest
 # or
 just test
@@ -272,7 +276,8 @@ ChessML is licensed under the [MIT License](LICENSE) - see the [LICENSE](https:/
 - Figure out if I can publish the book.bin generated from PGNMentor
 - Tune evaluation parameters
 - Add endgame tablebase support
-- Improve parallel search performance
+- Lazy SMP parallel search
+- Endgame knowledge (KQK, KRK, KBNK mating guidance, tapered evaluation)
 
 ### Running Engine Matches
 

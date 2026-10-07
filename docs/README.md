@@ -121,8 +121,8 @@ let count_material () =
 
 ### Other Core Concepts
 
-- **Move Encoding**: 16-bit packed representation (see `lib/core/move.ml`)
-- **Zobrist Hashing**: Incremental position hashing via XOR (see `lib/engine/zobrist.ml`)
+- **Move Representation**: record of from/to squares and move kind (see `lib/core/move.ml`)
+- **Zobrist Hashing**: Polyglot keys, maintained incrementally by `Position.make_move` (see `lib/engine/zobrist.ml`)
 - **Polyglot Books**: Binary format for opening books (see `lib/engine/polyglot.ml` and `examples/polyglot_demo.ml`)
 
 ---
@@ -162,7 +162,7 @@ dune exec --profile=release examples/search_bench.exe
 
 - Remove `Position.board` field (use bitboards only)
 - NNUE evaluation
-- Better time management
+- Smarter time management (e.g. extend on unstable best move)
 - Syzygy tablebase support
 - Lazy SMP parallel search
 
