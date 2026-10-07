@@ -110,8 +110,9 @@ let test_multiple_piece_advantage () =
   let fen = "r1bqkbnr/pppp1ppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" in
   let pos = Position.of_fen fen in
   let eval = Eval.evaluate pos in
-  (* Should be about 420 centipawns (320 for knight + 100 for pawn), allow tolerance *)
-  Alcotest.(check bool) "Multiple piece advantage" true (eval > 320);
+  (* 420cp of material, less the trade incentive (-5 per piece when ahead) and the
+     development penalty for White's extra undeveloped knight *)
+  Alcotest.(check bool) "Multiple piece advantage" true (eval > 250);
   Alcotest.(check bool) "Multiple piece advantage ~420" true (eval < 520)
 ;;
 
@@ -176,6 +177,26 @@ let test_no_crash_various_positions () =
   Alcotest.(check bool) "No crashes on various positions" true true
 ;;
 
+let test_pst_orientation () =
+  let pst color kind sq =
+    Piece_tables.piece_square_value { color; kind } (Square.of_uci sq)
+  in
+  Alcotest.(check bool)
+    "e4 pawn beats e2 pawn"
+    true
+    (pst White Pawn "e4" > pst White Pawn "e2");
+  Alcotest.(check bool)
+    "e7 pawn near promotion"
+    true
+    (pst White Pawn "e7" > pst White Pawn "e4");
+  Alcotest.(check bool)
+    "castled king on g1"
+    true
+    (pst White King "g1" > pst White King "g8");
+  Alcotest.(check int) "black mirrors white" (pst White Pawn "e4") (pst Black Pawn "e5");
+  Alcotest.(check int) "black king mirrors" (pst White King "g1") (pst Black King "g8")
+;;
+
 let tests =
   [ "Piece values", `Quick, test_piece_values
   ; "Starting position evaluation", `Quick, test_starting_position
@@ -191,6 +212,7 @@ let tests =
   ; "Only kings position", `Quick, test_only_kings
   ; "Massive material imbalance", `Quick, test_massive_imbalance
   ; "No crashes on various positions", `Quick, test_no_crash_various_positions
+  ; "Piece-square table orientation", `Quick, test_pst_orientation
   ]
 ;;
 

@@ -94,13 +94,13 @@ let rec see_recursive
           if
             (side_to_move = White && target_rank = 7)
             || (side_to_move = Black && target_rank = 0)
-          then Piece_tables.piece_kind_total_value Queen side_to_move target
+          then PieceKind.value Queen
           else
             (* Pawn's value at the target square *)
-            Piece_tables.piece_kind_total_value attacker_kind side_to_move target)
+            PieceKind.value attacker_kind)
         else
           (* Piece's value at the target square *)
-          Piece_tables.piece_kind_total_value attacker_kind side_to_move target
+          PieceKind.value attacker_kind
       in
       (* Recurse with opponent's turn *)
       let opponent =
@@ -164,23 +164,16 @@ let evaluate (pos : Position.t) (move : Move.t) : int =
     | None -> { color = White; kind = Pawn }
     (* Shouldn't happen *)
   in
-  (* Get captured piece value including positional bonus (or 0 for quiet moves) *)
+  (* Material value of the captured piece (0 for quiet moves) *)
   let captured_value =
-    match move with
-    | _ when Move.is_capture move || Move.is_en_passant move ->
-      (match Position.piece_at pos to_sq with
-       | Some p -> Piece_tables.piece_total_value p to_sq (* Include positional value *)
-       | None ->
-         (* En passant: captured pawn is not on target square *)
-         if Move.is_en_passant move
-         then (
-           let captured_pawn_sq =
-             if moving_piece.color = White then to_sq - 8 else to_sq + 8
-           in
-           let opponent = if moving_piece.color = White then Black else White in
-           Piece_tables.piece_kind_total_value Pawn opponent captured_pawn_sq)
-         else 0)
-    | _ -> 0 (* Quiet move *)
+    if Move.is_en_passant move
+    then PieceKind.value Pawn
+    else if Move.is_capture move
+    then (
+      match Position.piece_at pos to_sq with
+      | Some p -> PieceKind.value p.kind
+      | None -> 0)
+    else 0
   in
   (* If no capture, SEE is 0 *)
   if captured_value = 0
@@ -199,18 +192,11 @@ let evaluate (pos : Position.t) (move : Move.t) : int =
         Position.clear_square captured_pawn_sq new_pos)
       else new_pos
     in
-    (* Handle promotion - value at target square *)
+    (* Value of the piece now standing on the target square *)
     let moving_value =
-      if Move.is_promotion move
-      then (
-        match Move.promotion move with
-        | Some promo_piece ->
-          Piece_tables.piece_kind_total_value promo_piece moving_piece.color to_sq
-        | None -> Piece_tables.piece_total_value moving_piece to_sq)
-      else
-        Piece_tables.piece_total_value
-          moving_piece
-          to_sq (* Piece value at target square *)
+      match Move.promotion move with
+      | Some promo_piece -> PieceKind.value promo_piece
+      | None -> PieceKind.value moving_piece.kind
     in
     (* Initial gain: we captured target, but now our piece can be recaptured *)
     let initial_gain = captured_value in

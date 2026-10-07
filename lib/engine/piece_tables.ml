@@ -7,7 +7,8 @@
 open Chessml_core
 open Types
 
-(** Piece-square tables for positional evaluation (from white's perspective) *)
+(** Piece-square tables for positional evaluation, from White's perspective and laid
+    out as printed: index 0 is a8, index 63 is h1 (square index [sq lxor 56]). *)
 
 let pawn_table =
   [| 0
@@ -419,8 +420,8 @@ let king_middlegame_table =
 
 (** Get piece-square table bonus for a piece at a square *)
 let piece_square_value (piece : piece) (sq : Square.t) : int =
-  (* Flip square for black pieces *)
-  let table_sq = if piece.color = White then sq else sq lxor 56 in
+  (* Tables are a8-first, squares are a1-first: flip for White, Black reads it mirrored *)
+  let table_sq = if piece.color = White then sq lxor 56 else sq in
   match piece.kind with
   | Pawn -> pawn_table.(table_sq)
   | Knight -> knight_table.(table_sq)
