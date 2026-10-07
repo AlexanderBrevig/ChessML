@@ -85,11 +85,8 @@ module Ordering : sig
   val killer_score : int
   val quiet_base : int
 
-  (** Fast check detection without making the move *)
-  val gives_check_fast : Position.t -> Move.t -> bool
-
-  (** Check if a move gives check (simplified for ordering) *)
-  val gives_check_simple : Position.t -> Move.t -> bool
+  (** Does the move give check? (exact) *)
+  val gives_check : Position.t -> Move.t -> bool
 
   (** Score a move for ordering (higher is better) *)
   val score_move

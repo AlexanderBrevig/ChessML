@@ -107,3 +107,7 @@
 (test
  (name test_polyglot)
  (libraries chessml alcotest))
+
+(test
+ (name test_perft)
+ (libraries chessml alcotest))

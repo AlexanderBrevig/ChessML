@@ -1,60 +1,36 @@
-(** Move generation interface *)
+(** Legal move generation and attack detection *)
 
 open Chessml_core
 open Types
 
-(** Magic bitboard entry for sliding piece move generation *)
-type magic_entry =
-  { mask : Int64.t
-  ; magic : Int64.t
-  ; shift : int
-  ; offset : int
-  }
-
-(** Get knight attacks for a square *)
 val knight_attacks : Square.t -> Bitboard.t
-
-(** Get king attacks for a square *)
 val king_attacks : Square.t -> Bitboard.t
 
-(** Get pawn attacks for a square and color *)
+(** Squares attacked by a pawn of the given color on a square *)
 val pawn_attacks : Square.t -> color -> Bitboard.t
 
-(** Get pawn pushes for a square and color *)
-val pawn_pushes : Square.t -> color -> Bitboard.t
-
-(** Get rook attacks with blockers *)
+(** Slider attacks given the occupancy *)
 val rook_attacks : Square.t -> Bitboard.t -> Bitboard.t
 
-(** Get bishop attacks with blockers *)
 val bishop_attacks : Square.t -> Bitboard.t -> Bitboard.t
-
-(** Get queen attacks with blockers *)
 val queen_attacks : Square.t -> Bitboard.t -> Bitboard.t
 
-(** Get attacks for any piece type *)
+(** Squares attacked by a piece on a square given the occupancy *)
 val attacks_for : piece -> Square.t -> Bitboard.t -> Bitboard.t
 
-(** Compute all squares attacked by a color *)
-val compute_attacks_by : Position.t -> color -> Bitboard.t
+(** [attackers_to pos sq by occupied]: pieces of color [by] attacking [sq], with
+    sliders blocked by [occupied] (which may differ from the position's, e.g. for
+    x-rays in SEE) *)
+val attackers_to : Position.t -> Square.t -> color -> Bitboard.t -> Bitboard.t
 
-(** Compute which pieces of a color attack a given square *)
+(** Pieces of a color attacking a square in the current position *)
 val compute_attackers_to : Position.t -> Square.t -> color -> Bitboard.t
 
-(** Compute occupied squares *)
-val compute_occupied : Position.t -> Bitboard.t
+val is_square_attacked : Position.t -> Square.t -> color -> bool
+val king_square : Position.t -> color -> Square.t
 
-(** Find king square for a color *)
-val find_king : Position.t -> color -> Square.t option
+(** Is the side to move in check? *)
+val in_check : Position.t -> bool
 
-(** Compute ray between two squares (exclusive) *)
-val ray_between : Square.t -> Square.t -> Bitboard.t
-
-(** Compute checkers, pinned pieces, and checkmask *)
-val compute_legal_masks : Position.t -> color -> Bitboard.t * Bitboard.t * Bitboard.t
-
-(** Generate all legal moves for the current position *)
+(** All legal moves for the side to move *)
 val generate_moves : Position.t -> Move.t list
-
-(** Generate moves only from squares in the given bitboard mask *)
-val generate_moves_from : Position.t -> Bitboard.t -> Move.t list

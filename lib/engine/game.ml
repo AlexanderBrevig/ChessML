@@ -41,7 +41,6 @@ let make_move game mv =
 ;;
 
 let legal_moves game = Movegen.generate_moves game.position
-let legal_moves_from game mask = Movegen.generate_moves_from game.position mask
 let to_fen game = Position.to_fen game.position
 
 (** Resolve a move string (coordinate notation like "e2e4"/"e7e8q", or "O-O"/"O-O-O")

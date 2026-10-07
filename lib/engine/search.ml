@@ -268,7 +268,7 @@ and search_position pos ply depth alpha beta nodes pos_hash tt_move prev_move =
               | mv :: rest ->
                 move_count := !move_count + 1;
                 (* Futility pruning: skip quiet moves if position is hopeless *)
-                let move_gives_check = Search_common.Ordering.gives_check_fast pos mv in
+                let move_gives_check = Search_common.Ordering.gives_check pos mv in
                 let should_prune_futility =
                   Search_common.should_prune_move
                     can_futility_prune

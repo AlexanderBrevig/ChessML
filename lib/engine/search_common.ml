@@ -217,73 +217,9 @@ module Ordering = struct
   let countermove_score = 4000
   let quiet_base = 0 (* Changed from 50 to 0 - history should be the differentiator *)
 
-  (** Fast check detection without making the move *)
-  let gives_check_fast pos mv =
-    let from_sq = Move.from mv in
-    let to_sq = Move.to_square mv in
-    match Position.piece_at pos from_sq with
-    | None -> false
-    | Some piece ->
-      let opponent = Color.opponent piece.color in
-      let opp_king_sq =
-        match Movegen.find_king pos opponent with
-        | Some sq -> sq
-        | None -> 0
-      in
-      let occupied = Movegen.compute_occupied pos in
-      (* Simulate the piece being on the destination square *)
-      let new_occupied = Bitboard.set (Bitboard.clear occupied from_sq) to_sq in
-      (* Check if moving piece gives direct check *)
-      let direct_check =
-        let attacks = Movegen.attacks_for piece to_sq new_occupied in
-        Bitboard.contains attacks opp_king_sq
-      in
-      if direct_check
-      then true
-      else (
-        (* Check for discovered check: did we unblock a slider? *)
-        (* Check if there's a slider of our color that could give discovered check *)
-        let bishops = Position.get_pieces pos piece.color Bishop in
-        let rooks = Position.get_pieces pos piece.color Rook in
-        let queens = Position.get_pieces pos piece.color Queen in
-        let sliders = Int64.logor bishops (Int64.logor rooks queens) in
-        (* For each slider, check if removing from_sq opens a line to enemy king *)
-        let discovered_check = ref false in
-        Bitboard.iter
-          (fun slider_sq ->
-             if slider_sq <> from_sq
-             then (
-               (* Skip the moving piece itself *)
-               match Position.piece_at pos slider_sq with
-               | Some sp ->
-                 let attacks_before = Movegen.attacks_for sp slider_sq occupied in
-                 let attacks_after = Movegen.attacks_for sp slider_sq new_occupied in
-                 (* If enemy king wasn't attacked before but is now, it's discovered check *)
-                 if
-                   (not (Bitboard.contains attacks_before opp_king_sq))
-                   && Bitboard.contains attacks_after opp_king_sq
-                 then discovered_check := true
-               | None -> ()))
-          sliders;
-        !discovered_check)
-  ;;
-
-  (** Check if a move gives check (simplified for ordering) - OLD, kept for compatibility *)
-  let gives_check_simple pos mv =
-    try
-      let new_pos = Position.make_move pos mv in
-      let opponent = Color.opponent (Position.side_to_move pos) in
-      let king_sq =
-        match Movegen.find_king new_pos opponent with
-        | Some sq -> sq
-        | None -> 0
-      in
-      let side = Position.side_to_move new_pos in
-      let attackers = Movegen.compute_attackers_to new_pos king_sq side in
-      not (Bitboard.is_empty attackers)
-    with
-    | _ -> false
-  ;;
+  (** Does the move give check? Exact, including promotions, castling and
+      discovered checks *)
+  let gives_check pos mv = Movegen.in_check (Position.make_move pos mv)
 
   (** Quick MVV-LVA (Most Valuable Victim - Least Valuable Attacker) score *)
   let mvv_lva_score pos mv =
@@ -304,7 +240,7 @@ module Ordering = struct
     then tt_move_score
     else if Move.is_castle mv
     then castle_score
-    else if gives_check_fast pos mv
+    else if gives_check pos mv
     then check_score
     else if Move.is_promotion mv
     then (
@@ -397,7 +333,7 @@ module Quiescence = struct
     let tactical_moves =
       List.filter
         (fun mv ->
-           Move.is_capture mv || Move.is_promotion mv || Ordering.gives_check_fast pos mv)
+           Move.is_capture mv || Move.is_promotion mv || Ordering.gives_check pos mv)
         all_moves
     in
     (* Prune obviously losing captures using SEE *)
@@ -422,15 +358,7 @@ module Quiescence = struct
 end
 
 (** Check if the current side to move is in check *)
-let is_in_check pos =
-  let side = Position.side_to_move pos in
-  let opponent = Color.opponent side in
-  match Movegen.find_king pos side with
-  | Some king_sq ->
-    let attackers = Movegen.compute_attackers_to pos king_sq opponent in
-    not (Bitboard.is_empty attackers)
-  | None -> false (* Should never happen *)
-;;
+let is_in_check = Movegen.in_check
 
 (** Increment int64 reference *)
 let incr_int64 r = r := Int64.add !r 1L
