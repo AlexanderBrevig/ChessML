@@ -40,6 +40,10 @@ I have not measured how much each technique is worth in ChessML, so the pages do
 
 - [Opening Books]({% link docs/opening-books.md %}): the Polyglot book format and how ChessML builds its own book from a collection of games.
 
+## Endgames
+
+- [Basic Endgames]({% link docs/endgames.md %}): recognizing the basic endgames by their material, the mates against a lone king, and a computed table for king and pawn against king.
+
 ## The order I would read them in
 
 If you are new to this too, this is the order that made sense to me:
@@ -54,6 +58,7 @@ If you are new to this too, this is the order that made sense to me:
 8. [Static Exchange Evaluation]({% link docs/static-exchange-evaluation.md %})
 9. [Null Move Pruning]({% link docs/null-move-pruning.md %}) and [Late Move Reductions]({% link docs/late-move-reductions.md %})
 10. [Opening Books]({% link docs/opening-books.md %})
+11. [Basic Endgames]({% link docs/endgames.md %})
 
 For how the code itself is organized, see the [Developer Guide]({% link docs/README.md %}).
 

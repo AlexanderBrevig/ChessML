@@ -74,3 +74,8 @@
  (name test_book_weights)
  (modules test_book_weights)
  (libraries chessml))
+
+(executable
+ (name kpk_dump)
+ (modules kpk_dump)
+ (libraries chessml))

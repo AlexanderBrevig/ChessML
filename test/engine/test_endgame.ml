@@ -26,28 +26,29 @@ let test_promotion_move_generation () =
   Alcotest.(check bool) "Should generate queen promotion" true has_queen_promo
 ;;
 
-(** Test that the engine chooses to promote when it's the best move *)
+(** The engine wins with the pawn: a forced mate whose line includes promoting to
+    a queen (here 1.Kf6 first is faster than promoting at once) *)
 let test_engine_chooses_promotion () =
-  (* White pawn on 7th rank, king on e5, black king on g8 *)
-  let fen = "6k1/4P3/8/4K3/8/8/8/8 w - - 0 1" in
-  let game = Game.of_fen fen in
-  (* Search to depth 5 *)
+  let game = Game.of_fen "6k1/4P3/8/4K3/8/8/8/8 w - - 0 1" in
   let result = Search.find_best_move ~verbose:false game 5 in
-  match result.best_move with
-  | Some mv ->
-    Alcotest.(check bool)
-      "Engine should choose promotion move"
-      true
-      (Move.is_promotion mv);
-    (* Verify it's a queen promotion (best) *)
-    (match Move.promotion mv with
-     | Some Queen -> Alcotest.(check bool) "Should promote to queen" true true
-     | _ -> Alcotest.fail "Engine should promote to queen, not other piece")
-  | None -> Alcotest.fail "Engine should find a move"
+  Alcotest.(check bool)
+    "forced mate found"
+    true
+    (Score.is_mate result.score && result.score > 0);
+  Alcotest.(check bool)
+    "the mating line promotes to a queen"
+    true
+    (List.exists (fun mv -> Move.promotion mv = Some Queen) result.pv)
 ;;
 
-(** Test passed pawn evaluation bonuses increase with rank *)
+(** Test passed pawn evaluation bonuses increase with rank. These are K+P vs K
+    positions, which the full evaluation scores exactly (several are draws), so
+    test the pawn structure term itself. *)
 let test_passed_pawn_bonus_progression () =
+  let module Eval = struct
+    let evaluate = Chessml.Engine.Eval_pawn_structure.evaluate_pawn_structure
+  end
+  in
   (* Pawn on 4th rank *)
   let pos_4th = Position.of_fen "4k3/8/8/8/4P3/8/8/4K3 w - - 0 1" in
   let eval_4th = Eval.evaluate pos_4th in
@@ -120,7 +121,8 @@ let test_no_fifty_move_penalty_early () =
 let test_rook_pawn_endgame_promotion_plan () =
   (* White: Ka1, Rc8, pawn on d4
      Black: Kh8
-     This is a winning position - White should be able to force mate within 25 moves *)
+     This is a winning position - White should be able to force mate within 25 moves
+     (50 plies) *)
   let starting_fen = "2R4k/8/8/8/3P4/8/8/K7 b - - 0 1" in
   let game = Game.of_fen starting_fen in
   (* Play out the game automatically for up to 25 moves *)
@@ -162,7 +164,7 @@ let test_rook_pawn_endgame_promotion_plan () =
           let new_game = Game.make_move current_game mv in
           play_game new_game (move_count + 1) max_moves))
   in
-  let _final_game = play_game game 1 22 in
+  let _final_game = play_game game 1 50 in
   ()
 ;;
 
