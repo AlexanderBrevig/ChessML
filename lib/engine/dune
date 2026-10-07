@@ -13,9 +13,6 @@
   piece_tables
   see
   search_common
-  concurrent_tt
-  parallel_search
-  root_split_search
   position
   magic
   movegen

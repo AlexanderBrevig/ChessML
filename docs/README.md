@@ -51,10 +51,7 @@ This document covers the codebase architecture and development workflow for Ches
 
 ### Benchmarks (`examples/`)
 
-- **Search Benchmarks**: Single-threaded performance
-- **Parallel Benchmarks**: Multi-threaded scaling
-- **Feature Tests**: Individual technique validation
-- **Quality Tests**: Move quality analysis
+- **Search Benchmarks**: Fixed-depth search NPS and per-component timing
 
 ---
 
@@ -167,7 +164,7 @@ dune exec --profile=release examples/search_bench.exe
 - NNUE evaluation
 - Better time management
 - Syzygy tablebase support
-- Enhanced parallel search scaling
+- Lazy SMP parallel search
 
 ---
 

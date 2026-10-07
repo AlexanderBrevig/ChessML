@@ -1,4 +1,4 @@
-(** Single-threaded benchmark using Search module (not Parallel_search) *)
+(** Fixed-depth search benchmark from the starting position *)
 
 let () =
   (* Standard starting position *)
