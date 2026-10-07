@@ -5,7 +5,8 @@ open Chessml
 (** Configuration *)
 let max_ply = 20 (* Maximum opening depth in half-moves *)
 
-let min_game_count = 3 (* Minimum games to include a position *)
+let min_game_count = 3 (* Minimum games to include a move *)
+let min_share = 0.05 (* Minimum share of the position's games to include a move *)
 let openings_dir = "openings" (* Directory containing PGN files *)
 
 (** Move statistics keyed by (Polyglot key, Polyglot-encoded move) *)
@@ -125,34 +126,32 @@ let process_all_files files =
 
 (** Convert statistics to book entries with weights *)
 let create_book_entries () =
-  (* First pass: find max count for normalization context *)
-  let max_count = ref 0 in
-  MoveStats.iter (fun _ count -> max_count := max !max_count count) move_counts;
-  Printf.printf "   • Max game count for any move: %d\n" !max_count;
-  let entries = ref [] in
+  (* Group move counts by position *)
+  let by_position = Hashtbl.create 1_000_000 in
   MoveStats.iter
-    (fun (zobrist, move) count ->
-       if count >= min_game_count
-       then (
-         (* Logarithmic scaling to better use the 16-bit range:
-            - Maps counts from [min_game_count, max_count] to [1, 65535]
-            - Uses log scale so differences are preserved even for high counts
-            - Formula: weight = 1 + (65534 * log(count) / log(max_count))
-            
-            Example with max_count = 100,000:
-            - count = 3       -> weight ≈ 6,254   (low frequency)
-            - count = 100     -> weight ≈ 26,214  (moderate)
-            - count = 1,000   -> weight ≈ 39,321  (high)
-            - count = 10,000  -> weight ≈ 52,428  (very high)
-            - count = 100,000 -> weight = 65,535  (maximum)
-         *)
-         let log_count = log (float_of_int count) in
-         let log_max = log (float_of_int !max_count) in
-         let normalized = log_count /. log_max in
-         let weight = 1 + int_of_float (65534.0 *. normalized) in
-         entries := (zobrist, move, weight) :: !entries))
+    (fun (key, move) count ->
+       let moves = Option.value ~default:[] (Hashtbl.find_opt by_position key) in
+       Hashtbl.replace by_position key ((move, count) :: moves))
     move_counts;
-  !entries
+  (* Weights are linear in the game count and relative to the most played move in
+     the position (Polyglot weights only matter within a position). Moves played in
+     fewer than [min_share] of the position's games, or fewer than [min_game_count]
+     games, are dropped so rare sidelines are not chosen at random. *)
+  Hashtbl.fold
+    (fun key moves entries ->
+       let total = List.fold_left (fun acc (_, c) -> acc + c) 0 moves in
+       let best = List.fold_left (fun acc (_, c) -> max acc c) 0 moves in
+       List.fold_left
+         (fun entries (move, count) ->
+            if
+              count >= min_game_count
+              && float_of_int count >= min_share *. float_of_int total
+            then (key, move, max 1 (count * 65535 / best)) :: entries
+            else entries)
+         entries
+         moves)
+    by_position
+    []
 ;;
 
 let () =
