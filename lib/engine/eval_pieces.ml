@@ -201,29 +201,18 @@ let evaluate_development (pos : Position.t) (color : color) : int =
       then [ 1; 6 ], [ 2; 5 ], 3, [ 0; 7 ]
       else [ 57; 62 ], [ 58; 61 ], 59, [ 56; 63 ]
     in
+    (* Count from the pieces we still have, so a captured minor is neither a
+       penalty nor a development bonus *)
     let developed_minors = ref 0 in
-    (* Check knight development *)
-    List.iter
-      (fun sq ->
-         match Position.piece_at pos sq with
-         | Some p when p.kind = Knight && p.color = color ->
-           (* Knight still on starting square - penalty *)
-           bonus := !bonus - 25
-         | None | Some _ ->
-           (* Knight has moved - good! *)
-           incr developed_minors)
-      knight_start_sqs;
-    (* Check bishop development *)
-    List.iter
-      (fun sq ->
-         match Position.piece_at pos sq with
-         | Some p when p.kind = Bishop && p.color = color ->
-           (* Bishop still on starting square - penalty *)
-           bonus := !bonus - 25
-         | None | Some _ ->
-           (* Bishop has moved - good! *)
-           incr developed_minors)
-      bishop_start_sqs;
+    let count_minor kind start_sqs =
+      let start_mask = Bitboard.of_list start_sqs in
+      let pieces = Position.get_pieces pos color kind in
+      let undeveloped = Bitboard.population (Int64.logand pieces start_mask) in
+      bonus := !bonus - (undeveloped * 25);
+      developed_minors := !developed_minors + Bitboard.population pieces - undeveloped
+    in
+    count_minor Knight knight_start_sqs;
+    count_minor Bishop bishop_start_sqs;
     (* Check if queen moved too early (before minors developed) *)
     let queen_on_start =
       match Position.piece_at pos queen_start_sq with
