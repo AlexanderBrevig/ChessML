@@ -48,7 +48,7 @@ let test_book_lookup () =
   (* Keys with bit 63 and bit 31 set exercise the unsigned binary search *)
   let start = Game.default () in
   let after_e4 = Game.make_move start (find start "e2e4") in
-  let key g = Zobrist.compute (Game.position g) in
+  let key g = Position.key (Game.position g) in
   let entries =
     [ Polyglot.make_entry (key start) (find start "e2e4") 100
     ; Polyglot.make_entry (key start) (find start "d2d4") 50

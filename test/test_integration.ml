@@ -130,7 +130,7 @@ let test_not_draw_checkmate () =
 
 let test_zobrist_starting_position () =
   let pos = Position.default () in
-  let key = Zobrist.compute pos in
+  let key = Position.key pos in
   Alcotest.(check bool) "Starting position hash is non-zero" true (key <> 0L)
 ;;
 
@@ -139,16 +139,16 @@ let test_zobrist_different_positions () =
   let pos2 =
     Position.of_fen "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
   in
-  let key1 = Zobrist.compute pos1 in
-  let key2 = Zobrist.compute pos2 in
+  let key1 = Position.key pos1 in
+  let key2 = Position.key pos2 in
   Alcotest.(check bool) "Different positions have different hashes" true (key1 <> key2)
 ;;
 
 let test_zobrist_same_position () =
   let pos1 = Position.default () in
   let pos2 = Position.default () in
-  let key1 = Zobrist.compute pos1 in
-  let key2 = Zobrist.compute pos2 in
+  let key1 = Position.key pos1 in
+  let key2 = Position.key pos2 in
   Alcotest.(check bool) "Same positions have same hash" true (key1 = key2)
 ;;
 
@@ -159,8 +159,8 @@ let test_zobrist_side_to_move () =
   let pos_black =
     Position.of_fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1"
   in
-  let key_white = Zobrist.compute pos_white in
-  let key_black = Zobrist.compute pos_black in
+  let key_white = Position.key pos_white in
+  let key_black = Position.key pos_black in
   Alcotest.(check bool)
     "Different side to move yields different hash"
     true

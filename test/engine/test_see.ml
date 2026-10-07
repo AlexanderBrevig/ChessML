@@ -86,6 +86,16 @@ let xray_attack () =
     ()
 ;;
 
+let rook_battery_xray () =
+  (* Re2xe5, Re8xe5, Re1xe5: the e1 rook only attacks e5 once e2 has moved *)
+  see_test
+    "Rook battery x-ray"
+    "4r3/8/8/4p3/8/8/4R3/4R1K1 w - - 0 1"
+    (make_move "e2" "e5")
+    100
+    ()
+;;
+
 (** Least valuable attacker *)
 
 let lva_ordering () =
@@ -195,6 +205,7 @@ let () =
         ] )
     ; ( "tactical"
       , [ test_case "X-ray attacks" `Quick xray_attack
+        ; test_case "Rook battery x-ray" `Quick rook_battery_xray
         ; test_case "Capture defended queen" `Quick dont_capture_defended_queen
         ; test_case "Protected piece chain" `Quick protected_piece_chain
         ] )

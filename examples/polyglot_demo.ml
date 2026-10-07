@@ -20,7 +20,7 @@ let () =
   (* Example 2: Create and write an entry *)
   Printf.printf "2. Creating Book Entry:\n";
   let pos = Position.default () in
-  let key = Zobrist.compute pos in
+  let key = Position.key pos in
   let entry = Polyglot.make_entry key (move_of "e2e4") 5000 in
   Printf.printf "   Zobrist key: 0x%Lx\n" entry.Polyglot.key;
   Printf.printf "   Move: 0x%04x\n" entry.Polyglot.move;
@@ -65,7 +65,7 @@ let () =
   let book_file = Filename.temp_file "mini_book" ".bin" in
   let oc = open_out_bin book_file in
   (* Add e4, d4, Nf3 for starting position *)
-  let start_key = Zobrist.compute (Position.default ()) in
+  let start_key = Position.key (Position.default ()) in
   let entries =
     [ Polyglot.make_entry start_key (move_of "e2e4") 10000
     ; Polyglot.make_entry start_key (move_of "d2d4") 8000

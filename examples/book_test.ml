@@ -51,7 +51,7 @@ let () =
     let pos_e4 =
       Position.make_move start (Move.make Square.e2 Square.e4 Move.PawnDoublePush)
     in
-    let key_e4 = Zobrist.compute pos_e4 in
+    let key_e4 = Position.key pos_e4 in
     Printf.printf "  Zobrist key: 0x%016Lx\n" key_e4;
     let stats = Opening_book.get_book_stats (Some book) pos_e4 in
     if stats = []

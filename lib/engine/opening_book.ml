@@ -102,7 +102,7 @@ let probe (book : book option) (pos : Position.t) : (Move.t * int) list =
   match book with
   | None -> []
   | Some book ->
-    let entries = find_entries book (Zobrist.compute pos) in
+    let entries = find_entries book (Position.key pos) in
     (* Decode moves and filter valid ones *)
     List.filter_map
       (fun (entry : Polyglot.entry) ->

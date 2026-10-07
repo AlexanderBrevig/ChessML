@@ -24,7 +24,12 @@ val castling_rights : t -> castling_rights array
 val white_king_sq : t -> Square.t
 val black_king_sq : t -> Square.t
 val occupied : t -> Bitboard.t
+
+(** Polyglot Zobrist key, maintained incrementally *)
 val key : t -> Int64.t
+
+(** Key computed from scratch; always equal to [key] (for tests) *)
+val compute_key : t -> Int64.t
 
 (** Piece bitboard accessors *)
 val get_pieces : t -> Types.color -> Types.piece_kind -> Bitboard.t

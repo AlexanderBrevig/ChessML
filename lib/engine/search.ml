@@ -141,7 +141,7 @@ let rec alphabeta
   (* Increment node counter *)
   incr_int64 nodes;
   (* Get position hash for transposition table *)
-  let pos_hash = Zobrist.compute pos in
+  let pos_hash = Position.key pos in
   (* Check transposition table if enabled *)
   if Config.get_use_transposition_table ()
   then (
@@ -457,7 +457,7 @@ let find_best_move ?(verbose = true) ?max_time_ms (game : Game.t) (depth : int)
          match best_move with
          | Some mv ->
            let new_pos = Position.make_move pos mv in
-           let new_key = Zobrist.compute new_pos in
+           let new_key = Position.key new_pos in
            let material_diff =
              Eval.count_material pos (Position.side_to_move pos)
              - Eval.count_material pos (Color.opponent (Position.side_to_move pos))

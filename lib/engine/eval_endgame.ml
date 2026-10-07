@@ -34,7 +34,7 @@ let evaluate_repetition_incentive
       (material_diff : int)
   : int
   =
-  let pos_key = Zobrist.compute pos in
+  let pos_key = Position.key pos in
   let repetition_count = count_repetitions pos_key history in
   if repetition_count = 0
   then 0

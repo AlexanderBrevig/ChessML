@@ -1,13 +1,10 @@
-(** Position hashing with the Polyglot key scheme, shared by the transposition
-    table, repetition detection and the opening book *)
+(** Position hash keys in the Polyglot scheme. Position maintains its key
+    incrementally from these; use [Position.key] to get a position's hash. *)
 
 open Chessml_core
 open Types
 
 type t = Int64.t
-
-(** Compute the Polyglot key of a position *)
-val compute : Position.t -> t
 
 (** Key for a piece standing on a square *)
 val piece_key : piece -> Square.t -> t

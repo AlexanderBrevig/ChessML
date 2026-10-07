@@ -42,7 +42,7 @@ let process_game local_stats game =
   let rec process_moves pos move_list ply_count =
     match move_list with
     | mv :: rest when ply_count < max_ply ->
-      let move_key = Zobrist.compute pos, Polyglot.encode_move mv in
+      let move_key = Position.key pos, Polyglot.encode_move mv in
       let current_count =
         Option.value ~default:0 (MoveStats.find_opt local_stats move_key)
       in

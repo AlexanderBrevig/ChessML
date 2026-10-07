@@ -21,7 +21,7 @@ let make position =
   { position
   ; checkers = Bitboard.empty
   ; pinned = Bitboard.empty
-  ; history = [ Zobrist.compute position ]
+  ; history = [ Position.key position ]
   }
 ;;
 
@@ -32,7 +32,7 @@ let history game = game.history
 
 let make_move game mv =
   let new_pos = Position.make_move game.position mv in
-  let new_key = Zobrist.compute new_pos in
+  let new_key = Position.key new_pos in
   { position = new_pos
   ; checkers = Bitboard.empty
   ; pinned = Bitboard.empty
