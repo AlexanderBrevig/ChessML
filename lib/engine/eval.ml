@@ -69,7 +69,19 @@ let evaluate_position (pos : Position.t) : int =
   + diff (Eval_endgame.evaluate_ladder_mate pos)
 ;;
 
-(** Score from the side to move's perspective in centipawns; 0 for dead positions *)
+(** Score from the side to move's perspective in centipawns: 0 for dead positions,
+    a specialized evaluator for recognized endgames, otherwise the general terms *)
 let evaluate (pos : Position.t) : int =
-  if Position.has_insufficient_material pos then 0 else evaluate_position pos
+  if Position.has_insufficient_material pos
+  then 0
+  else (
+    match Endgame.evaluate pos with
+    | Some score ->
+      (* a won endgame still has to be won before the fifty-move rule *)
+      let side = Position.side_to_move pos in
+      let material_diff =
+        Position.material pos side - Position.material pos (Color.opponent side)
+      in
+      score + Eval_endgame.evaluate_fifty_move_incentive pos material_diff
+    | None -> evaluate_position pos)
 ;;

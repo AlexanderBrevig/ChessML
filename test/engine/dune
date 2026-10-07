@@ -111,3 +111,8 @@
 (test
  (name test_perft)
  (libraries chessml alcotest))
+
+(test
+ (name test_endgame_technique)
+ (modules test_endgame_technique endgame_harness)
+ (libraries chessml alcotest))

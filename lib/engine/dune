@@ -24,6 +24,7 @@
   eval_pieces
   eval_king_safety
   eval_endgame
+  endgame
   eval
   search
   perft
