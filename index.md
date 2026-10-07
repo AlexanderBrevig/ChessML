@@ -34,6 +34,7 @@ Judging positions:
 - [Static exchange evaluation]({% link docs/static-exchange-evaluation.md %}): is this capture safe?
 - [Evaluation function]({% link docs/evaluation-function.md %}): turning a position into a number
 - [Opening books]({% link docs/opening-books.md %}): playing the first moves from a book
+- [Basic endgames]({% link docs/endgames.md %}): queen, rook, bishop and knight mates, and an exact king and pawn table
 
 The [overview page]({% link docs/chess-programming-guide.md %}) has a few lines on each, and the [developer guide]({% link docs/README.md %}) describes how the code is organized.
 
