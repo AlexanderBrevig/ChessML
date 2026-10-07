@@ -122,20 +122,21 @@ let parse_setoption (tokens : string list) : unit =
     flush stderr
 ;;
 
-(** Apply a list of UCI moves to a game *)
+(** Apply a list of UCI moves to a game. Each move is resolved against the legal
+    moves so castling, en passant and double pushes are applied correctly. Applying
+    stops at the first illegal move, since later moves would be meaningless. *)
 let apply_moves (game : Game.t) (moves : string list) : Game.t =
-  List.fold_left
-    (fun g move_str ->
-       try
-         let mv = Move.of_uci move_str in
-         Game.make_move g mv
-       with
-       | _ ->
-         Printf.eprintf "Warning: Invalid move %s\n" move_str;
+  let rec apply g = function
+    | [] -> g
+    | move_str :: rest ->
+      (match Game.find_move g move_str with
+       | Some mv -> apply (Game.make_move g mv) rest
+       | None ->
+         Printf.eprintf "Warning: Illegal move %s, ignoring remaining moves\n" move_str;
          flush stderr;
          g)
-    game
-    moves
+  in
+  apply game moves
 ;;
 
 (** Parse UCI position command *)

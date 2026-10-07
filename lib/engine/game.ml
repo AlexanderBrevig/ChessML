@@ -44,6 +44,26 @@ let legal_moves game = Movegen.generate_moves game.position
 let legal_moves_from game mask = Movegen.generate_moves_from game.position mask
 let to_fen game = Position.to_fen game.position
 
+(** Resolve a move string (coordinate notation like "e2e4"/"e7e8q", or "O-O"/"O-O-O")
+    to the matching legal move, so the move carries its correct kind (castle,
+    en passant, double push, capture). Returns [None] for malformed or illegal moves. *)
+let find_move game str =
+  let legal = legal_moves game in
+  match str with
+  | "O-O" | "0-0" -> List.find_opt (fun mv -> Move.kind mv = Move.ShortCastle) legal
+  | "O-O-O" | "0-0-0" -> List.find_opt (fun mv -> Move.kind mv = Move.LongCastle) legal
+  | _ ->
+    (match Move.of_uci str with
+     | exception (Invalid_argument _ | Failure _) -> None
+     | parsed ->
+       List.find_opt
+         (fun mv ->
+            Move.from mv = Move.from parsed
+            && Move.to_square mv = Move.to_square parsed
+            && Move.promotion mv = Move.promotion parsed)
+         legal)
+;;
+
 (** Check if the current position is a repetition (appeared at least once before) *)
 let is_repetition game =
   let current_key = List.hd game.history in

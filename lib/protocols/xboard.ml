@@ -102,6 +102,51 @@ let main_loop () =
      | None -> "not found");
   flush log;
   flush stdout;
+  (* Search (or probe the book) and play the engine's move on the current game *)
+  let engine_reply () =
+    let legal_moves = Game.legal_moves !game in
+    let resign () =
+      Printf.fprintf log "SEND: resign\n";
+      flush log;
+      Printf.printf "resign\n";
+      flush stdout
+    in
+    if legal_moves = []
+    then resign ()
+    else (
+      let search_time_ms = calculate_search_time_ms !my_time in
+      (* Limit search depth when very low on time *)
+      let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
+      match find_move opening_book !game search_time_ms max_depth log with
+      | Some mv when List.mem mv legal_moves ->
+        let move_str = move_to_xboard_notation mv in
+        Printf.fprintf log "SEND: move %s\n" move_str;
+        flush log;
+        Printf.printf "move %s\n" move_str;
+        flush stdout;
+        game := Game.make_move !game mv
+      | Some mv ->
+        Printf.fprintf
+          log
+          "ERROR: engine produced illegal move %s in %s\n"
+          (Move.to_uci mv)
+          (Game.to_fen !game);
+        flush log;
+        resign ()
+      | None -> resign ())
+  in
+  (* Apply an opponent move, then reply unless in force mode *)
+  let user_move move_str =
+    match Game.find_move !game move_str with
+    | None ->
+      Printf.fprintf log "Illegal move %s in %s\n" move_str (Game.to_fen !game);
+      flush log;
+      Printf.printf "Illegal move: %s\n" move_str;
+      flush stdout
+    | Some mv ->
+      game := Game.make_move !game mv;
+      if not !force_mode then engine_reply ()
+  in
   try
     while true do
       Printf.fprintf log "=== Waiting for next command ===\n";
@@ -150,253 +195,10 @@ let main_loop () =
         force_mode := true;
         ()
       | "go" :: _ ->
-        (* Start thinking *)
         force_mode := false;
-        let pos = Game.position !game in
-        let legal_moves = Movegen.generate_moves pos in
-        if legal_moves = []
-        then Printf.printf "resign\n"
-        else (
-          let search_time_ms = calculate_search_time_ms !my_time in
-          (* Limit search depth when very low on time *)
-          let max_depth = if !my_time < 100 then 3 else Config.get_max_search_depth () in
-          match find_move opening_book !game search_time_ms max_depth log with
-          | Some mv ->
-            let move_str = move_to_xboard_notation mv in
-            Printf.fprintf log "SEND: move %s\n" move_str;
-            flush log;
-            Printf.printf "move %s\n" move_str;
-            flush stdout;
-            game := Game.make_move !game mv
-          | None ->
-            Printf.fprintf log "SEND: resign\n";
-            flush log;
-            Printf.printf "resign\n";
-            flush stdout)
-      | "usermove" :: move_str :: _ ->
-        (* User made a move *)
-        (try
-           Printf.fprintf
-             log
-             "Before user move, position: %s\n"
-             (Position.to_fen (Game.position !game));
-           flush log;
-           let mv_parsed = Move.of_uci move_str in
-           (* Validate that the move is legal in the current position *)
-           let pos = Game.position !game in
-           let legal_moves = Movegen.generate_moves pos in
-           let legal_move =
-             List.find_opt
-               (fun legal_mv ->
-                  Move.from legal_mv = Move.from mv_parsed
-                  && Move.to_square legal_mv = Move.to_square mv_parsed)
-               legal_moves
-           in
-           match legal_move with
-           | None ->
-             Printf.fprintf log "ERROR: Opponent move %s is not legal!\n" move_str;
-             Printf.fprintf log "Position: %s\n" (Position.to_fen pos);
-             Printf.fprintf
-               log
-               "Legal moves: %s\n"
-               (String.concat ", " (List.map Move.to_uci legal_moves));
-             flush log;
-             Printf.printf "Illegal move: %s\n" move_str;
-             flush stdout
-           | Some mv ->
-             (* Use the legal move (with correct kind) instead of parsed move *)
-             game := Game.make_move !game mv;
-             Printf.fprintf
-               log
-               "After user move %s, position: %s\n"
-               move_str
-               (Position.to_fen (Game.position !game));
-             flush log;
-             (* If not in force mode, respond with our move *)
-             if not !force_mode
-             then (
-               Printf.fprintf log "Processing move, about to search...\n";
-               flush log;
-               let pos = Game.position !game in
-               let legal_moves = Movegen.generate_moves pos in
-               Printf.fprintf log "Generated %d legal moves\n" (List.length legal_moves);
-               flush log;
-               if legal_moves = []
-               then (
-                 Printf.fprintf log "SEND: resign\n";
-                 flush log;
-                 Printf.printf "resign\n";
-                 flush stdout)
-               else (
-                 let search_time_ms = calculate_search_time_ms !my_time in
-                 let max_depth =
-                   if !my_time < 100 then 3 else Config.get_max_search_depth ()
-                 in
-                 Printf.fprintf
-                   log
-                   "Starting search at depth %d with %dms time limit...\n"
-                   max_depth
-                   search_time_ms;
-                 flush log;
-                 match find_move opening_book !game search_time_ms max_depth log with
-                 | Some mv ->
-                   (* Verify the move is actually legal before sending *)
-                   if List.mem mv legal_moves
-                   then (
-                     let move_str = move_to_xboard_notation mv in
-                     Printf.fprintf log "SEND: move %s\n" move_str;
-                     flush log;
-                     (* Log current position for debugging *)
-                     let pos = Game.position !game in
-                     Printf.fprintf
-                       log
-                       "Position after search: %s\n"
-                       (Position.to_fen pos);
-                     flush log;
-                     Printf.printf "move %s\n" move_str;
-                     flush stdout;
-                     Printf.fprintf log "Making engine move on game...\n";
-                     flush log;
-                     game := Game.make_move !game mv;
-                     Printf.fprintf log "Engine move applied successfully\n";
-                     flush log)
-                   else (
-                     let pos = Game.position !game in
-                     Printf.fprintf
-                       log
-                       "ERROR: Search returned illegal move %s!\n"
-                       (Move.to_uci mv);
-                     Printf.fprintf log "Position FEN: %s\n" (Position.to_fen pos);
-                     Printf.fprintf
-                       log
-                       "Legal moves were: %s\n"
-                       (String.concat ", " (List.map Move.to_uci legal_moves));
-                     flush log;
-                     Printf.printf "resign\n";
-                     flush stdout)
-                 | None ->
-                   Printf.fprintf log "SEND: resign\n";
-                   flush log;
-                   Printf.printf "resign\n";
-                   flush stdout);
-               Printf.fprintf log "Finished processing usermove, returning to main loop\n";
-               flush log)
-             else (
-               Printf.fprintf log "In force mode, not responding\n";
-               flush log)
-         with
-         | ex ->
-           Printf.fprintf log "ERROR in usermove handler: %s\n" (Printexc.to_string ex);
-           flush log;
-           Printf.eprintf
-             "ERROR processing move %s: %s\n"
-             move_str
-             (Printexc.to_string ex);
-           flush stderr;
-           Printf.printf "Illegal move: %s\n" move_str;
-           flush stdout)
-      | "O-O" :: _ | "0-0" :: _ ->
-        (* Kingside castling *)
-        Printf.fprintf log "RECV: Kingside castling\n";
-        flush log;
-        (try
-           let pos = Game.position !game in
-           let side = Position.side_to_move pos in
-           let castling_move =
-             if side = White
-             then Move.make (Square.of_uci "e1") (Square.of_uci "g1") Move.ShortCastle
-             else Move.make (Square.of_uci "e8") (Square.of_uci "g8") Move.ShortCastle
-           in
-           game := Game.make_move !game castling_move;
-           Printf.fprintf log "Applied kingside castling successfully\n";
-           flush log;
-           (* If not in force mode, respond with our move *)
-           if not !force_mode
-           then (
-             let pos = Game.position !game in
-             let legal_moves = Movegen.generate_moves pos in
-             if legal_moves = []
-             then (
-               Printf.printf "resign\n";
-               flush stdout)
-             else (
-               let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth =
-                 if !my_time < 100 then 3 else Config.get_max_search_depth ()
-               in
-               let result =
-                 Search.find_best_move
-                   ~verbose:false
-                   ~max_time_ms:search_time_ms
-                   !game
-                   max_depth
-               in
-               match result.Search.best_move with
-               | Some mv ->
-                 let move_str = move_to_xboard_notation mv in
-                 Printf.printf "move %s\n" move_str;
-                 flush stdout;
-                 game := Game.make_move !game mv
-               | None ->
-                 Printf.printf "resign\n";
-                 flush stdout))
-         with
-         | ex ->
-           Printf.fprintf log "ERROR in kingside castling: %s\n" (Printexc.to_string ex);
-           flush log;
-           Printf.printf "Illegal move: O-O\n";
-           flush stdout)
-      | "O-O-O" :: _ | "0-0-0" :: _ ->
-        (* Queenside castling *)
-        Printf.fprintf log "RECV: Queenside castling\n";
-        flush log;
-        (try
-           let pos = Game.position !game in
-           let side = Position.side_to_move pos in
-           let castling_move =
-             if side = White
-             then Move.make (Square.of_uci "e1") (Square.of_uci "c1") Move.LongCastle
-             else Move.make (Square.of_uci "e8") (Square.of_uci "c8") Move.LongCastle
-           in
-           game := Game.make_move !game castling_move;
-           Printf.fprintf log "Applied queenside castling successfully\n";
-           flush log;
-           (* If not in force mode, respond with our move *)
-           if not !force_mode
-           then (
-             let pos = Game.position !game in
-             let legal_moves = Movegen.generate_moves pos in
-             if legal_moves = []
-             then (
-               Printf.printf "resign\n";
-               flush stdout)
-             else (
-               let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth =
-                 if !my_time < 100 then 3 else Config.get_max_search_depth ()
-               in
-               let result =
-                 Search.find_best_move
-                   ~verbose:false
-                   ~max_time_ms:search_time_ms
-                   !game
-                   max_depth
-               in
-               match result.Search.best_move with
-               | Some mv ->
-                 let move_str = move_to_xboard_notation mv in
-                 Printf.printf "move %s\n" move_str;
-                 flush stdout;
-                 game := Game.make_move !game mv
-               | None ->
-                 Printf.printf "resign\n";
-                 flush stdout))
-         with
-         | ex ->
-           Printf.fprintf log "ERROR in queenside castling: %s\n" (Printexc.to_string ex);
-           flush log;
-           Printf.printf "Illegal move: O-O-O\n";
-           flush stdout)
+        engine_reply ()
+      | "usermove" :: move_str :: _ -> user_move move_str
+      | (("O-O" | "0-0" | "O-O-O" | "0-0-0") as move_str) :: _ -> user_move move_str
       | move_str :: _
         when String.length move_str >= 4
              && String.length move_str <= 5
@@ -408,55 +210,8 @@ let main_loop () =
              && move_str.[2] <= 'h'
              && move_str.[3] >= '1'
              && move_str.[3] <= '8' ->
-        (* Old-style move without "usermove" prefix - validate UCI format *)
-        (try
-           let mv = Move.of_uci move_str in
-           game := Game.make_move !game mv;
-           (* If not in force mode, respond with our move *)
-           if not !force_mode
-           then (
-             let pos = Game.position !game in
-             let legal_moves = Movegen.generate_moves pos in
-             if legal_moves = []
-             then (
-               Printf.fprintf log "SEND: resign\n";
-               flush log;
-               Printf.printf "resign\n";
-               flush stdout)
-             else (
-               let search_time_ms = calculate_search_time_ms !my_time in
-               let max_depth =
-                 if !my_time < 100 then 3 else Config.get_max_search_depth ()
-               in
-               let result =
-                 Search.find_best_move
-                   ~verbose:false
-                   ~max_time_ms:search_time_ms
-                   !game
-                   max_depth
-               in
-               match result.Search.best_move with
-               | Some mv ->
-                 let move_str = move_to_xboard_notation mv in
-                 Printf.fprintf log "SEND: move %s\n" move_str;
-                 flush log;
-                 Printf.printf "move %s\n" move_str;
-                 flush stdout;
-                 game := Game.make_move !game mv
-               | None ->
-                 Printf.fprintf log "SEND: resign\n";
-                 flush log;
-                 Printf.printf "resign\n";
-                 flush stdout))
-         with
-         | ex ->
-           Printf.eprintf
-             "ERROR processing move %s: %s\n"
-             move_str
-             (Printexc.to_string ex);
-           flush stderr;
-           Printf.printf "Illegal move: %s\n" move_str;
-           flush stdout)
+        (* Old-style move without "usermove" prefix *)
+        user_move move_str
       | "setboard" :: fen_parts ->
         (* Set position from FEN *)
         let fen = String.concat " " fen_parts in
