@@ -3,7 +3,7 @@
  (public_name chessml.engine)
  (flags
   (:standard -w -32-69))
- (libraries chessml.core unix threads.posix str)
+ (libraries chessml.core unix threads.posix)
  (modules
   config
   killers

@@ -50,7 +50,7 @@ let process_game local_stats game =
       process_moves (Position.make_move pos mv) rest (ply_count + 1)
     | _ -> ply_count
   in
-  process_moves (Position.default ()) (Pgn_parser.game_to_moves game) 0
+  process_moves (Pgn_parser.start_position game) (Pgn_parser.game_to_moves game) 0
 ;;
 
 (** Process all PGN files and build statistics *)
